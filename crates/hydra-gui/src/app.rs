@@ -491,7 +491,7 @@ impl FileInfoState {
         if self.save_dir.is_empty() {
             self.file_name.clone()
         } else {
-            std::path::Path::new(&self.save_dir)
+            std::path::Path::new(&save_folder(&self.save_dir))
                 .join(&self.file_name)
                 .to_string_lossy()
                 .into_owned()
@@ -520,11 +520,28 @@ impl FileInfoState {
 fn split_save_as(path: &str) -> (String, String) {
     match path.rfind(['/', '\\']) {
         Some(0) => (path[..1].to_string(), path[1..].to_string()),
-        Some(2) if path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes()[1] == b':' => {
-            (path[..3].to_string(), path[3..].to_string())
+        Some(i) if is_bare_windows_drive(&path[..i]) => {
+            (path[..i + 1].to_string(), path[i + 1..].to_string())
         }
         Some(i) => (path[..i].to_string(), path[i + 1..].to_string()),
+        None if path.get(..2).is_some_and(is_bare_windows_drive) => {
+            (save_folder(&path[..2]), path[2..].to_string())
+        }
         None => (String::new(), path.to_string()),
+    }
+}
+
+fn is_bare_windows_drive(path: &str) -> bool {
+    let path = path.strip_prefix(r"\\?\").unwrap_or(path);
+    path.len() == 2 && path.as_bytes()[0].is_ascii_alphabetic() && path.as_bytes()[1] == b':'
+}
+
+fn save_folder(path: &str) -> String {
+    // Older Save As edits could persist a drive root without its separator.
+    if is_bare_windows_drive(path) {
+        format!("{path}\\")
+    } else {
+        path.to_string()
     }
 }
 
@@ -2044,6 +2061,7 @@ impl App {
             cat,
             self.cfg.settings.no_category_dirs,
         )
+        .map(|dir| save_folder(&dir))
     }
 
     /// Recompute the Permissions window's status dots.
@@ -4154,6 +4172,7 @@ impl App {
                 .or_else(|| self.cat_dir(Some(&fi.category)))
                 .unwrap_or_default();
         }
+        fi.save_dir = save_folder(&fi.save_dir);
         // Options > Save to > "Change folder for category on last
         // selected" is the same tick, made for every dialog whose
         // folder the user actually edited.
@@ -9866,6 +9885,12 @@ mod tests {
             (r"q:\a.zip", r"q:\", "a.zip"),
             (r"Q:\", r"Q:\", ""),
             ("Q:/", "Q:/", ""),
+            (r"\\?\Q:\a.zip", r"\\?\Q:\", "a.zip"),
+            (r"\\?\q:\", r"\\?\q:\", ""),
+            ("Q:a.zip", r"Q:\", "a.zip"),
+            ("Q:", r"Q:\", ""),
+            ("1:a.zip", "", "1:a.zip"),
+            ("é:a.zip", "", "é:a.zip"),
             ("ab/a.zip", "ab", "a.zip"),
             ("é/a.zip", "é", "a.zip"),
         ] {
@@ -9886,6 +9911,26 @@ mod tests {
         fi.set_save_as("/var/x/b.zip");
         assert!(fi.dir_touched);
         assert_eq!(fi.save_dir, "/var/x");
+    }
+
+    #[test]
+    fn save_as_repairs_stored_bare_drive_folders() {
+        for (dir, root) in [("Q:", r"Q:\"), (r"\\?\Q:", r"\\?\Q:\")] {
+            let fi = FileInfoState {
+                save_dir: dir.into(),
+                file_name: "Dore-Amir-E01-720.mp4".into(),
+                ..Default::default()
+            };
+            assert_eq!(
+                fi.save_as(),
+                std::path::Path::new(root)
+                    .join(&fi.file_name)
+                    .to_string_lossy()
+            );
+        }
+        for dir in ["", "/tmp", r"Q:\Downloads", "Q:Downloads", "1:", "é:"] {
+            assert_eq!(save_folder(dir), dir);
+        }
     }
 
     use super::*;
@@ -12312,6 +12357,68 @@ mod tests {
             is_new: false,
             ..FileInfoState::default()
         }
+    }
+
+    #[test]
+    fn browser_capture_browse_keeps_drive_roots_and_file_names_separate() {
+        let name = "Dore-Amir-E01-720.mp4";
+        let url = "https://s7.uplod.ir:182/d/3w24cr4e4hvhuf6tfsnybjd6uqzoy2c5vuyynvhs74kbub6artnkzwtyblq5fuvuyhaodrce/Dore-Amir-E01-720.mp4";
+        for (picked, root) in [
+            (format!(r"Q:\{name}"), r"Q:\"),
+            (format!(r"\\?\Q:\{name}"), r"\\?\Q:\"),
+            (format!("Q:{name}"), r"Q:\"),
+        ] {
+            let mut app = App::default();
+            app.cfg.settings.bg_download = false;
+            app.cfg.settings.show_file_info_dialog = true;
+            let (ack, receipt) = crate::extbus::Ack::pair();
+            let waiting = std::thread::spawn(move || receipt.recv().is_ok());
+            let dl = crate::extbus::ExtDownload {
+                url: url.into(),
+                ..Default::default()
+            };
+            let _ = app.update(Message::Ext(crate::extbus::ExtEvent::Download(dl, ack)));
+            assert!(waiting.join().unwrap());
+            let id = app.file_info.dl;
+            let _ = app.update(Message::FiPathPicked(id + 1, picked.clone()));
+            assert_ne!(app.file_info.save_dir, root);
+            let _ = app.update(Message::FiPathPicked(id, picked));
+            assert_eq!(app.file_info.save_dir, root);
+            assert_eq!(app.file_info.file_name, name);
+            let displayed = app.file_info.save_as();
+            let _ = app.update(Message::FiSaveAs(displayed));
+            let _ = app.update(Message::FiDownloadLater);
+            let d = app.item(id).unwrap();
+            assert_eq!(d.save_dir, root);
+            assert_eq!(d.file_name, name);
+            assert_eq!(crate::windows::progress::title(&app, id), name);
+            #[cfg(windows)]
+            assert_eq!(d.full_path(), std::path::Path::new(root).join(name));
+        }
+    }
+
+    #[test]
+    fn bare_drive_category_and_existing_file_info_commit_as_root() {
+        let mut app = App::default();
+        app.cfg.categories = vec![model::CategoryDef {
+            name: "Video".into(),
+            exts: vec!["mp4".into()],
+            dir: "Q:".into(),
+            builtin: false,
+        }];
+        let id = app.add_item(
+            "https://example.org/Dore-Amir-E01-720.mp4".into(),
+            None,
+            None,
+        );
+        assert_eq!(app.item(id).unwrap().save_dir, r"Q:\");
+        app.item_mut(id).unwrap().save_dir = "Q:".into();
+        app.file_info = properties_for(&app, id);
+        app.file_info.remember = true;
+        let _ = app.update(Message::FiOk);
+        assert_eq!(app.item(id).unwrap().save_dir, r"Q:\");
+        assert_eq!(app.item(id).unwrap().file_name, "Dore-Amir-E01-720.mp4");
+        assert_eq!(app.cfg.categories[0].dir, r"Q:\");
     }
 
     #[test]
