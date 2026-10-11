@@ -1348,6 +1348,7 @@ pub enum Message {
     ShortcutEdit(String, String),
     MouseUp,
     ColResizeStart(Column),
+    SchColResizeStart(usize),
     /// Left press on a header cell: the start of either a sort (release
     /// without moving) or a drag that reorders the columns.
     HeaderPress(Column),
@@ -1669,6 +1670,7 @@ pub struct App {
     /// The width itself lives in `cfg.settings.columns` and is written there
     /// as the pointer moves; the config file is only saved once the drag ends.
     pub resizing: Option<(Column, f32, f32)>,
+    pub sch_resizing: Option<(usize, f32, f32)>,
     /// A header cell is held down: the column, the pointer x the press is
     /// measured from, and whether it has since moved far enough to count as a
     /// reorder drag rather than a click on the title. A press that never
@@ -1955,6 +1957,7 @@ impl Default for App {
             sel_anchor: None,
             mods: iced::keyboard::Modifiers::default(),
             resizing: None,
+            sch_resizing: None,
             header_drag: None,
             header_ctx: None,
             tree_sel: TreeSel::All,
@@ -2213,7 +2216,8 @@ impl App {
     /// View > Scale showing two percentages ticked at once.
     #[cfg(target_os = "macos")]
     pub fn sync_native_menu(&self) {
-        if !crate::macos_menu::sync(&self.native_menu_state()) {
+        // AppKit menu updates require the main thread; headless tests run on workers.
+        if !cfg!(test) && !crate::macos_menu::sync(&self.native_menu_state()) {
             self.refresh_native_menu();
         }
     }
@@ -2673,6 +2677,7 @@ impl App {
             .filter(|l| Some(l) != self.cfg.language.as_ref());
         cfg.language = self.cfg.language.clone();
         let before = std::mem::replace(&mut self.cfg, cfg);
+        self.sort = (self.cfg.settings.sort_key, self.cfg.settings.sort_ascending);
         let no_renames = HashMap::new();
         if refile_downloads(&mut self.state.downloads, &no_renames, &self.cfg.categories) {
             self.save_state();
@@ -3531,14 +3536,6 @@ impl App {
         self.save_state();
     }
 
-    /// What a progress window's controls start out showing for `id`.
-    fn prog_seed_of(&self, id: DlId) -> (Option<u64>, ProxyChoice) {
-        match self.item(id) {
-            Some(d) => (d.speed_limit, d.proxy.clone()),
-            None => (None, ProxyChoice::default()),
-        }
-    }
-
     /// Give `id` a progress-window state if it has none, and re-read the
     /// proxy row from the item.
     ///
@@ -3547,12 +3544,26 @@ impl App {
     /// the route the download no longer takes. Only the address box's text is
     /// the window's own — it survives unless the item names an address.
     fn sync_prog_state(&mut self, id: DlId) {
-        let (seed, proxy) = self.prog_seed_of(id);
+        let (seed, value, remember, proxy) = match self.item(id) {
+            Some(d) => (
+                d.speed_limit,
+                d.speed_limit_value,
+                d.remember_speed_limit,
+                d.proxy.clone(),
+            ),
+            None => (None, None, None, ProxyChoice::default()),
+        };
         let details = self.cfg.settings.show_conn_details;
-        let p = self
-            .prog
-            .entry(id)
-            .or_insert_with(|| prog_state_seed(seed, &proxy, details));
+        let p = self.prog.entry(id).or_insert_with(|| {
+            let mut state = prog_state_seed(seed, &proxy, details);
+            if let Some(value) = value {
+                state.limit_kb = (value / 1024).to_string();
+            }
+            if let Some(remember) = remember {
+                state.remember_limit = remember;
+            }
+            state
+        });
         p.proxy_pick = proxy.pick();
         if !proxy.spec().is_empty() {
             p.proxy_spec = proxy.spec().to_string();
@@ -3607,6 +3618,8 @@ impl App {
             cookie_source: None,
             referer: None,
             speed_limit: None,
+            speed_limit_value: None,
+            remember_speed_limit: None,
             limit_paused: false,
             held: vec![],
             part_path: None,
@@ -4567,12 +4580,20 @@ impl App {
     }
 
     /// Settle the shortcut table once the dialog is done with it: every
-    /// combo in the one spelling a key press produces, and one that no press
-    /// could ever match back to its default rather than stored as dead.
+    /// nonempty combo in the spelling a key press produces. Empty values
+    /// disable the action; invalid or conflicting combos revert to defaults.
     fn normalize_shortcuts(&mut self) {
         let mut changed = false;
         let mut taken: Vec<String> = Vec::new();
         for (id, default, _) in crate::model::SHORTCUT_ACTIONS {
+            if self
+                .cfg
+                .shortcuts
+                .get(id)
+                .is_some_and(|combo| combo.trim().is_empty())
+            {
+                continue;
+            }
             let typed = self.cfg.shortcuts.get(id).cloned().unwrap_or_default();
             // Earlier rows win a conflict: the later one would never fire.
             let settled = model::normalize_combo(&typed)
@@ -5110,10 +5131,8 @@ impl App {
                     return Task::none();
                 }
                 let remember_limit = self
-                    .prog
-                    .get(&id)
-                    .map(|p| p.remember_limit)
-                    .unwrap_or(false);
+                    .item(id)
+                    .is_some_and(|d| d.remember_speed_limit.unwrap_or(d.speed_limit.is_some()));
                 if let Some(d) = self.item_mut(id) {
                     if !remember_limit {
                         d.speed_limit = None;
@@ -5180,10 +5199,8 @@ impl App {
                     return Task::none();
                 }
                 let remember_limit = self
-                    .prog
-                    .get(&id)
-                    .map(|p| p.remember_limit)
-                    .unwrap_or(false);
+                    .item(id)
+                    .is_some_and(|d| d.remember_speed_limit.unwrap_or(d.speed_limit.is_some()));
                 if let Some(d) = self.item_mut(id) {
                     let by_limit = d.limit_paused;
                     d.state = DlState::Paused;
@@ -5839,6 +5856,10 @@ impl App {
                             (start_w + (p.x - grab_x)).clamp(model::COL_MIN_W, model::COL_MAX_W);
                     }
                 }
+                if let Some((col, grab_x, start_w)) = self.sch_resizing {
+                    self.cfg.settings.scheduler_column_widths[col] =
+                        (start_w + p.x - grab_x).clamp(model::COL_MIN_W, model::COL_MAX_W);
+                }
                 self.drag_header_to(p.x);
                 Task::none()
             }
@@ -5847,6 +5868,13 @@ impl App {
                 Task::none()
             }
             Message::RawKey(key, mods, win) => {
+                if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Delete)
+                    && mods.is_empty()
+                    && self.windows.get(&win) == Some(&WinKind::Main)
+                    && self.renaming_queue.is_none()
+                {
+                    return self.update(Message::ToolbarDelete);
+                }
                 // Escape backs out of an inline rename, leaving the queue
                 // under its old name — the draft is only committed on Enter.
                 if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)
@@ -5951,13 +5979,7 @@ impl App {
                     Some("quit") => {
                         self.update(resolve_quit_action(win, cfg!(target_os = "windows")))
                     }
-                    _ => {
-                        if cfg!(target_os = "windows") && combo == "ctrl+q" {
-                            self.update(Message::WindowCloseRequested(win))
-                        } else {
-                            Task::none()
-                        }
-                    }
+                    _ => Task::none(),
                 }
             }
             Message::SelectAll => {
@@ -6112,6 +6134,12 @@ impl App {
                 Task::none()
             }
             Message::MouseUp => {
+                if let Some((col, grab_x, start_w)) = self.sch_resizing.take() {
+                    self.cfg.settings.scheduler_column_widths[col] =
+                        (start_w + self.cursor_now().x - grab_x)
+                            .clamp(model::COL_MIN_W, model::COL_MAX_W);
+                    self.save_config();
+                }
                 if self.resizing.take().is_some() {
                     self.save_config();
                 }
@@ -6142,17 +6170,28 @@ impl App {
                 }
                 Task::none()
             }
+            Message::SchColResizeStart(col) => {
+                if let Some(&width) = self.cfg.settings.scheduler_column_widths.get(col) {
+                    self.sch_resizing = Some((col, self.cursor_now().x, width));
+                }
+                Task::none()
+            }
             Message::SortBy(key) => {
                 if self.sort.0 == key {
                     self.sort.1 = !self.sort.1;
                 } else {
                     self.sort = (key, true);
                 }
+                self.cfg.settings.sort_key = self.sort.0;
+                self.cfg.settings.sort_ascending = self.sort.1;
+                self.save_config();
                 self.sync_native_menu();
                 Task::none()
             }
             Message::SortDirection(asc) => {
                 self.sort.1 = asc;
+                self.cfg.settings.sort_ascending = asc;
+                self.save_config();
                 self.sync_native_menu();
                 Task::none()
             }
@@ -6686,11 +6725,15 @@ impl App {
                 // the transfer is actually held to.
                 let kb = p.limit_kb.parse().ok().filter(|kb| *kb > 0).unwrap_or(10);
                 p.limit_kb = kb.to_string();
+                let remember = p.remember_limit;
                 if let Some(d) = self.item_mut(id) {
                     d.speed_limit = on.then_some(kb * 1024);
+                    d.speed_limit_value = Some(kb * 1024);
+                    d.remember_speed_limit = Some(remember);
                 }
                 let lim = self.item(id).and_then(|d| d.speed_limit);
                 engine::send(Cmd::SetLimit(id, lim));
+                self.save_state();
                 Task::none()
             }
             // The proxy is editable in this dialog only while the transfer is
@@ -6722,6 +6765,10 @@ impl App {
                 // it survives the transfer (Stopped/Finished clear the item's
                 // limit when the box is unchecked).
                 self.prog.entry(id).or_default().remember_limit = b;
+                if let Some(d) = self.item_mut(id) {
+                    d.remember_speed_limit = Some(b);
+                }
+                self.save_state();
                 Task::none()
             }
             Message::ProgLimitKb(id, s) => {
@@ -6731,11 +6778,19 @@ impl App {
                     // Blank or zero mid-edit keeps the cap in force rather
                     // than lifting it: a box being retyped is not "unlimited".
                     let kb: Option<u64> = p.limit_kb.parse().ok().filter(|kb| *kb > 0);
-                    if let (true, Some(kb)) = (p.limit_on, kb) {
+                    let (on, remember) = (p.limit_on, p.remember_limit);
+                    if let Some(kb) = kb {
                         if let Some(d) = self.item_mut(id) {
-                            d.speed_limit = Some(kb * 1024);
+                            d.speed_limit_value = Some(kb * 1024);
+                            d.remember_speed_limit = Some(remember);
+                            if on {
+                                d.speed_limit = Some(kb * 1024);
+                            }
                         }
-                        engine::send(Cmd::SetLimit(id, Some(kb * 1024)));
+                        if on {
+                            engine::send(Cmd::SetLimit(id, Some(kb * 1024)));
+                        }
+                        self.save_state();
                     }
                 }
                 Task::none()
@@ -10616,6 +10671,8 @@ mod tests {
             cookie_source: None,
             referer: None,
             speed_limit: None,
+            speed_limit_value: None,
+            remember_speed_limit: None,
             limit_paused: false,
             held: vec![],
             part_path: None,
@@ -12856,6 +12913,80 @@ mod tests {
     /// spelling per combo, a combo no press can produce goes back to its
     /// default, and a conflict is settled for the earlier action.
     #[test]
+    fn cleared_shortcuts_stay_disabled_after_closing_and_reloading() {
+        use iced::keyboard::{Key, Modifiers};
+
+        let mut app = App::default();
+        app.cfg = model::normalize_config(app.cfg);
+        let win = window::Id::unique();
+        app.windows.insert(win, WinKind::Shortcuts);
+        for (id, _, _) in model::SHORTCUT_ACTIONS {
+            let _ = app.update(Message::ShortcutEdit(id.into(), String::new()));
+        }
+        let _ = app.update(Message::CloseThis(win));
+        let cfg =
+            model::normalize_config(toml::from_str(&toml::to_string(&app.cfg).unwrap()).unwrap());
+        for (id, _, _) in model::SHORTCUT_ACTIONS {
+            assert_eq!(cfg.shortcuts[id], "");
+        }
+        app.cfg = cfg;
+        app.windows.insert(win, WinKind::Main);
+        let command = if cfg!(target_os = "macos") {
+            Modifiers::LOGO
+        } else {
+            Modifiers::CTRL
+        };
+        for key in ["a", "q"] {
+            let _ = app.update(Message::RawKey(Key::Character(key.into()), command, win));
+        }
+        assert!(app.selected.is_empty());
+        assert!(app.windows.contains_key(&win));
+        assert!(app.confirm.is_none());
+    }
+
+    #[test]
+    fn delete_key_only_removes_from_the_main_table() {
+        use iced::keyboard::{key::Named, Key, Modifiers};
+
+        let mut app = App::default();
+        let download = item(1, "/d", "file.zip", None, DlState::Paused);
+        app.state.downloads.push(download);
+        app.selected = vec![1];
+        let win = window::Id::unique();
+        for kind in [WinKind::Shortcuts, WinKind::Scheduler, WinKind::AddUrl] {
+            app.windows.insert(win, kind);
+            let _ = app.update(Message::RawKey(
+                Key::Named(Named::Delete),
+                Modifiers::empty(),
+                win,
+            ));
+            assert!(app.confirm.is_none());
+        }
+        app.windows.insert(win, WinKind::Main);
+        let _ = app.update(Message::RawKey(
+            Key::Named(Named::Delete),
+            Modifiers::SHIFT,
+            win,
+        ));
+        assert!(app.confirm.is_none());
+        app.renaming_queue = Some("queue".into());
+        let _ = app.update(Message::RawKey(
+            Key::Named(Named::Delete),
+            Modifiers::empty(),
+            win,
+        ));
+        assert!(app.confirm.is_none());
+        app.renaming_queue = None;
+        let _ = app.update(Message::RawKey(
+            Key::Named(Named::Delete),
+            Modifiers::empty(),
+            win,
+        ));
+        assert!(matches!(app.confirm, Some(ConfirmKind::DeleteItems(ref ids)) if ids == &[1]));
+        assert_eq!(app.state.downloads.len(), 1);
+    }
+
+    #[test]
     fn shortcuts_are_settled_when_the_dialog_closes() {
         let mut app = App::default();
         for (id, combo, _) in crate::model::SHORTCUT_ACTIONS {
@@ -13610,6 +13741,167 @@ mod tests {
         let old = app.sch.queue.clone();
         assert!(app.rename_queue(&old, "Night"));
         assert_eq!(app.sch.queue, "Night");
+    }
+
+    #[test]
+    fn download_limiter_preferences_survive_restart_and_disable() {
+        let mut app = App::default();
+        app.state
+            .downloads
+            .push(item(1, "/d", "file.zip", None, DlState::Paused));
+        app.sync_prog_state(1);
+        for message in [
+            Message::ProgLimitKb(1, "128".into()),
+            Message::ProgLimitRemember(1, true),
+            Message::ProgLimitOn(1, true),
+        ] {
+            app.state_dirty = false;
+            let _ = app.update(message);
+            assert!(app.state_dirty);
+        }
+        let mut reopened = App {
+            state: serde_json::from_str(&serde_json::to_string(&app.state).unwrap()).unwrap(),
+            ..App::default()
+        };
+        reopened.sync_prog_state(1);
+        assert!(reopened.prog[&1].limit_on);
+        assert!(reopened.prog[&1].remember_limit);
+        assert_eq!(reopened.prog[&1].limit_kb, "128");
+        let _ = reopened.update(Message::ProgLimitOn(1, false));
+        let _ = reopened.update(Message::ProgLimitKb(1, "256".into()));
+        let _ = reopened.update(Message::ProgLimitRemember(1, false));
+        app.state = serde_json::from_str(&serde_json::to_string(&reopened.state).unwrap()).unwrap();
+        app.prog.clear();
+        app.sync_prog_state(1);
+        assert!(!app.prog[&1].limit_on);
+        assert!(!app.prog[&1].remember_limit);
+        assert_eq!(app.prog[&1].limit_kb, "256");
+        let _ = app.update(Message::ProgLimitOn(1, true));
+        app.prog.clear();
+        let _ = app.update(Message::Engine(engine::Event::Stopped {
+            id: 1,
+            done: 0,
+            held: vec![],
+        }));
+        assert_eq!(app.item(1).unwrap().speed_limit, None);
+    }
+
+    #[test]
+    fn remembered_download_limit_survives_stopping_without_a_progress_window() {
+        let mut app = App::default();
+        let mut download = item(1, "/d", "file.zip", None, DlState::Paused);
+        download.speed_limit = Some(128 * 1024);
+        download.remember_speed_limit = Some(true);
+        app.state.downloads.push(download);
+        let _ = app.update(Message::Engine(engine::Event::Stopped {
+            id: 1,
+            done: 0,
+            held: vec![],
+        }));
+        assert_eq!(app.item(1).unwrap().speed_limit, Some(128 * 1024));
+        let mut old = serde_json::to_value(app.item(1).unwrap()).unwrap();
+        old.as_object_mut().unwrap().remove("remember_speed_limit");
+        old.as_object_mut().unwrap().remove("speed_limit_value");
+        app.state.downloads = vec![serde_json::from_value(old).unwrap()];
+        app.sync_prog_state(1);
+        assert!(app.prog[&1].remember_limit);
+        assert_eq!(app.prog[&1].limit_kb, "128");
+    }
+
+    #[test]
+    fn arrangement_actions_survive_config_reload() {
+        let mut app = App::default();
+        for key in Column::ALL
+            .into_iter()
+            .map(SortKey::Column)
+            .chain([SortKey::OrderOfAddition])
+        {
+            let _ = app.update(Message::Menu(MenuAction::ArrangeBy(key)));
+            for ascending in [true, false] {
+                let _ = app.update(Message::Menu(MenuAction::SortDirection(ascending)));
+                assert!(app.cfg_dirty);
+                let saved = toml::to_string(&app.cfg).unwrap();
+                let mut reopened = App::default();
+                reopened.adopt_config(toml::from_str(&saved).unwrap());
+                assert_eq!(reopened.sort, (key, ascending));
+            }
+        }
+        let _ = app.update(Message::SortBy(SortKey::Column(Column::Name)));
+        let _ = app.update(Message::SortBy(SortKey::Column(Column::Name)));
+        assert_eq!(app.sort, (SortKey::Column(Column::Name), false));
+        assert_eq!(app.cfg.settings.sort_key, app.sort.0);
+        assert_eq!(app.cfg.settings.sort_ascending, app.sort.1);
+    }
+
+    #[test]
+    fn scheduler_column_drag_saves_widths_without_changing_queue_order() {
+        let mut app = App::default();
+        app.cfg = model::normalize_config(app.cfg);
+        let initial_main: Vec<f32> = app.cfg.settings.columns.iter().map(|p| p.width).collect();
+        app.sch.queue = app.cfg.queues[0].name.clone();
+        app.sch.tab = SchTab::Files;
+        for (id, state) in [(1, DlState::Queued), (2, DlState::Receiving)] {
+            let mut download = item(id, "/d", "a-long-file-name.zip", None, state);
+            download.queue = Some(app.sch.queue.clone());
+            download.q_order = 3 - id as u32;
+            download.eta_secs = Some(120);
+            download.size = Some(1024);
+            app.state.downloads.push(download);
+        }
+        let _ = crate::windows::scheduler::view(&app);
+        for (index, target) in [450.0, 180.0, 220.0, 160.0].into_iter().enumerate() {
+            let start = app.cfg.settings.scheduler_column_widths[index];
+            app.cursor_cell.set(Point::new(100.0, 10.0));
+            let _ = app.update(Message::SchColResizeStart(index));
+            app.cursor_cell
+                .set(Point::new(100.0 + target - start, 10.0));
+            let _ = app.update(Message::DragTick);
+            assert_eq!(app.cfg.settings.scheduler_column_widths[index], target);
+            assert!(!app.cfg_dirty);
+            let _ = app.update(Message::MouseUp);
+            assert!(app.cfg_dirty);
+            assert!(app.sch_resizing.is_none());
+            assert!(!app.state_dirty);
+            app.cfg_dirty = false;
+        }
+        let saved = toml::to_string(&app.cfg).unwrap();
+        let reopened: ConfigFile = toml::from_str(&saved).unwrap();
+        assert_eq!(
+            reopened.settings.scheduler_column_widths,
+            [450.0, 180.0, 220.0, 160.0]
+        );
+        assert_eq!(
+            app.cfg
+                .settings
+                .columns
+                .iter()
+                .map(|p| p.width)
+                .collect::<Vec<_>>(),
+            initial_main
+        );
+        assert_eq!(
+            app.state
+                .downloads
+                .iter()
+                .map(|d| (d.id, d.q_order))
+                .collect::<Vec<_>>(),
+            vec![(1, 2), (2, 1)]
+        );
+        let _ = crate::windows::scheduler::view(&app);
+    }
+
+    #[test]
+    fn scheduler_column_drag_clamps_and_samples_the_release_position() {
+        let mut app = App::default();
+        let _ = app.update(Message::SchColResizeStart(4));
+        assert!(app.sch_resizing.is_none());
+        for (x, expected) in [(-1000.0, model::COL_MIN_W), (2000.0, model::COL_MAX_W)] {
+            app.cursor_cell.set(Point::ORIGIN);
+            let _ = app.update(Message::SchColResizeStart(0));
+            app.cursor_cell.set(Point::new(x, 0.0));
+            let _ = app.update(Message::MouseUp);
+            assert_eq!(app.cfg.settings.scheduler_column_widths[0], expected);
+        }
     }
 
     #[test]

@@ -109,7 +109,7 @@ impl Harness {
                 std::mem::take(&mut self.cache),
                 &mut self.renderer,
             );
-            let _ = ui.update(
+            let (_, statuses) = ui.update(
                 events,
                 cursor,
                 &mut self.renderer,
@@ -117,6 +117,11 @@ impl Harness {
                 &mut messages,
             );
             self.cache = ui.into_cache();
+            for (event, status) in events.iter().zip(statuses) {
+                if let Some(message) = crate::subscription_event(event.clone(), status, self.id) {
+                    messages.push(message);
+                }
+            }
             for m in messages {
                 let _ = self.app.update(m);
             }
@@ -357,6 +362,8 @@ fn download(i: u64) -> DownloadItem {
         cookie_source: None,
         referer: None,
         speed_limit: None,
+        speed_limit_value: None,
+        remember_speed_limit: None,
         limit_paused: false,
         held: vec![],
         part_path: None,
@@ -957,4 +964,194 @@ fn plugin_track_picker_and_subtitles_render() {
         physical(h.logical, h.scale),
     );
     h.assert_clean("plugin track selection");
+}
+
+#[test]
+fn scheduler_columns_resize_through_the_header_and_repaint_cleanly() {
+    use crate::app::{Message, SchTab};
+
+    let mut app = app_with(12);
+    app.cfg = crate::model::normalize_config(app.cfg);
+    app.cfg.settings.theme_mode = Some(crate::model::ThemeMode::Dark);
+    app.sch.tab = SchTab::Files;
+    app.sch.queue = app.cfg.queues[0].name.clone();
+    for download in &mut app.state.downloads {
+        download.queue = Some(app.sch.queue.clone());
+    }
+    let mut h = Harness::new(app, WinKind::Scheduler, Size::new(950.0, 660.0), 1.0, true);
+    h.step("scheduler files", &[]);
+    let mut grip = None;
+    for y in (90..190).step_by(4) {
+        let point = Point::new(581.0, y as f32);
+        h.hover("find scheduler divider", point);
+        h.step(
+            "press scheduler divider",
+            &[Event::Mouse(mouse::Event::ButtonPressed(
+                mouse::Button::Left,
+            ))],
+        );
+        if h.app.sch_resizing.is_some() {
+            grip = Some(point);
+            break;
+        }
+        let _ = h.app.update(Message::MouseUp);
+    }
+    let grip = grip.expect("scheduler header divider must accept a resize press");
+    assert_eq!(h.app.sch_resizing.unwrap().0, 0);
+    assert!(h.app.sch.drag.is_none());
+    h.hover(
+        "widen scheduler filename",
+        Point::new(grip.x + 150.0, grip.y),
+    );
+    let _ = h.app.update(Message::DragTick);
+    h.step("resized scheduler", &[]);
+    assert_eq!(h.app.cfg.settings.scheduler_column_widths[0], 450.0);
+    let _ = h.app.update(Message::MouseUp);
+    h.step("release scheduler divider", &[]);
+    assert!(h.app.sch_resizing.is_none());
+    h.assert_clean("scheduler column resize");
+    dump(
+        "scheduler-resized-dark",
+        &h.shown,
+        &h.shown,
+        physical(h.logical, h.scale),
+    );
+}
+
+fn key_press(key: iced::keyboard::Key, modifiers: iced::keyboard::Modifiers) -> Event {
+    Event::Keyboard(iced::keyboard::Event::KeyPressed {
+        modified_key: key.clone(),
+        key,
+        physical_key: iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Delete),
+        location: iced::keyboard::Location::Standard,
+        modifiers,
+        text: None,
+        repeat: false,
+    })
+}
+
+#[test]
+fn gui_delete_key_confirms_and_removes_the_selected_row() {
+    use crate::app::ConfirmKind;
+    use iced::keyboard::{key::Named, Key, Modifiers};
+
+    let mut h = main_window(6, Size::new(950.0, 660.0), 1.0, true);
+    h.hover("select row to remove", row_point(&h, 0));
+    let selected = h.app.hover_row.unwrap();
+    h.step(
+        "press row",
+        &[Event::Mouse(mouse::Event::ButtonPressed(
+            mouse::Button::Left,
+        ))],
+    );
+    h.step(
+        "release row",
+        &[Event::Mouse(mouse::Event::ButtonReleased(
+            mouse::Button::Left,
+        ))],
+    );
+    assert_eq!(h.app.selected, vec![selected]);
+    h.step(
+        "delete selected row",
+        &[key_press(Key::Named(Named::Delete), Modifiers::empty())],
+    );
+    assert!(matches!(h.app.confirm, Some(ConfirmKind::DeleteItems(ref ids)) if ids == &[selected]));
+    assert_eq!(h.app.state.downloads.len(), 6);
+    h.assert_clean("Delete key confirmation");
+    let mut confirmation =
+        Harness::new(h.app, WinKind::Confirm, Size::new(520.0, 200.0), 1.0, true);
+    confirmation.step("removal confirmation", &[]);
+    confirmation.step(
+        "accept removal",
+        &[key_press(Key::Named(Named::Enter), Modifiers::empty())],
+    );
+    assert_eq!(confirmation.app.state.downloads.len(), 5);
+    assert!(confirmation.app.item(selected).is_none());
+    confirmation.assert_clean("confirmed removal");
+}
+
+#[test]
+fn gui_clearing_a_shortcut_disables_it_without_restoring_the_default() {
+    use iced::keyboard::{key::Named, Key, Modifiers};
+
+    let mut app = App::default();
+    app.cfg = crate::model::normalize_config(app.cfg);
+    app.cfg.settings.theme_mode = Some(crate::model::ThemeMode::Dark);
+    let mut h = Harness::new(app, WinKind::Shortcuts, Size::new(520.0, 620.0), 1.0, false);
+    h.step("keyboard shortcut editor", &[]);
+    dump(
+        "shortcut-editor",
+        &h.shown,
+        &h.shown,
+        physical(h.logical, h.scale),
+    );
+    h.hover("focus first shortcut", Point::new(430.0, 70.0));
+    h.step(
+        "press shortcut field",
+        &[Event::Mouse(mouse::Event::ButtonPressed(
+            mouse::Button::Left,
+        ))],
+    );
+    h.step(
+        "release shortcut field",
+        &[Event::Mouse(mouse::Event::ButtonReleased(
+            mouse::Button::Left,
+        ))],
+    );
+    let command = if cfg!(target_os = "macos") {
+        Modifiers::LOGO
+    } else {
+        Modifiers::CTRL
+    };
+    h.step(
+        "command modifier",
+        &[Event::Keyboard(iced::keyboard::Event::ModifiersChanged(
+            command,
+        ))],
+    );
+    h.step(
+        "select shortcut text",
+        &[key_press(Key::Character("a".into()), command)],
+    );
+    h.step(
+        "release command modifier",
+        &[Event::Keyboard(iced::keyboard::Event::ModifiersChanged(
+            Modifiers::empty(),
+        ))],
+    );
+    h.step(
+        "clear shortcut",
+        &[key_press(Key::Named(Named::Delete), Modifiers::empty())],
+    );
+    assert_eq!(h.app.cfg.shortcuts["add_url"], "");
+    assert!(h.app.confirm.is_none());
+    let brightest_text = h
+        .shown
+        .iter()
+        .map(|pixel| {
+            (pixel & 0xFF)
+                .min((pixel >> 8) & 0xFF)
+                .min((pixel >> 16) & 0xFF)
+        })
+        .max()
+        .unwrap();
+    assert!(
+        brightest_text >= 240,
+        "white text rasterized at {brightest_text}"
+    );
+    dump(
+        "disabled-shortcut",
+        &h.shown,
+        &h.shown,
+        physical(h.logical, h.scale),
+    );
+    h.step(
+        "accept empty shortcut",
+        &[key_press(Key::Named(Named::Enter), Modifiers::empty())],
+    );
+    let cfg = crate::model::normalize_config(
+        toml::from_str(&toml::to_string(&h.app.cfg).unwrap()).unwrap(),
+    );
+    assert_eq!(cfg.shortcuts["add_url"], "");
+    assert!(h.app.win_of(WinKind::Shortcuts).is_none());
 }

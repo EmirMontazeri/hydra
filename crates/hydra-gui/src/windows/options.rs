@@ -1907,6 +1907,60 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn configuration_tabs_preserve_every_changed_option_after_reload() {
+        let base = crate::model::Settings::default();
+        let mut state = OptionsState {
+            draft: base.clone(),
+            ..OptionsState::default()
+        };
+        macro_rules! toggle {
+            ($($variant:ident => $field:ident),* $(,)?) => {
+                $(state.apply(OptField::$variant(!base.$field));)*
+            };
+        }
+        toggle!(
+            LaunchStartup => launch_on_startup, CheckUpdates => check_updates_on_startup,
+            BetaChannel => beta_channel, StartInTray => start_in_tray, CloseToTray => close_to_tray,
+            PowerSave => power_save, GpuRender => gpu_render, Clipboard => monitor_clipboard,
+            PortableCapture => portable_capture, RememberLast => remember_last_dir,
+            ServerDate => server_file_date, NoCatDirs => no_category_dirs,
+            ShowFileInfo => show_file_info_dialog, BgDownload => bg_download,
+            StartMinimized => start_minimized, SpeedTab => show_speed_tab,
+            CompletionTab => show_completion_tab, HideButtons => show_hide_buttons,
+            ConnDetails => show_conn_details, CompleteDialog => show_complete_dialog,
+            RemoveCompleted => remove_completed, AdaptiveConns => adaptive_conns,
+            DlLimit => dl_limit_enabled, SpeedLimiter => speed_limiter_on, WarnStop => warn_before_stop,
+        );
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+        state.apply(OptField::HideTaskbar(!base.hide_from_taskbar));
+        for field in [
+            OptField::UserAgent("test-agent".into()),
+            OptField::VirusScanner("/tools/scanner".into()),
+            OptField::VirusArgs("--scan %f".into()),
+            OptField::DefaultConns(3),
+            OptField::DlLimitMb("321".into()),
+            OptField::DlLimitHours("7".into()),
+            OptField::SpeedLimitKb("128".into()),
+            OptField::ProxyHost("proxy.example".into()),
+            OptField::ProxyPort("8081".into()),
+            OptField::ProxyUser("test-user".into()),
+            OptField::ProxyPass("test-password".into()),
+            OptField::CookiesBrowser("firefox".into()),
+            OptField::CookiesProfile("test-profile".into()),
+        ] {
+            state.apply(field);
+        }
+        let mut saved = base.clone();
+        saved.apply_options_draft(&base, &state.draft);
+        let restored: crate::model::Settings =
+            toml::from_str(&toml::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(restored).unwrap(),
+            serde_json::to_value(state.draft).unwrap()
+        );
+    }
+
+    #[test]
     fn browsing_updates_the_ffmpeg_subtitle_and_badge_before_saving() {
         let mut options = OptionsState::default();
         let executable = std::env::current_exe().unwrap().display().to_string();

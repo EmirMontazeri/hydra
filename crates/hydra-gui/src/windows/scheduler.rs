@@ -8,7 +8,9 @@ use crate::app::{App, El, Message, SchField, SchTab, WinKind};
 use crate::model::{DlState, PowerAction, QueueDef};
 use crate::windows::{cell, check, dlg_btn, dlg_btn_primary};
 use crate::{fmt, i18n::tr, icons, theme};
-use iced::widget::{button, column, container, mouse_area, radio, row, svg, text, text_input};
+use iced::widget::{
+    button, column, container, mouse_area, radio, row, scrollable, svg, text, text_input,
+};
 
 use iced::Length;
 
@@ -19,9 +21,7 @@ fn s(f: SchField) -> Message {
 /// Width of the queue list box; the New queue / Delete pair shares it.
 const LIST_W: f32 = 240.0;
 
-/// Size, Status and Time left in the files list; the header and the rows
-/// share the number.
-const FILE_COL_W: f32 = 100.0;
+const COL_GRIP: f32 = 6.0;
 
 /// Vertical gap between the schedule tab's rows: a checkbox row is only
 /// 18 px, and at the ordinary dialog gap the ticks read as one dense block.
@@ -160,11 +160,18 @@ fn queue_list(app: &App) -> El<'_> {
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center),
-        container(crate::ui::scroll(list).height(Length::Fill))
-            .padding(4)
-            .width(LIST_W)
-            .height(Length::Fill)
-            .style(theme::panel),
+        container(
+            scrollable(container(list).padding(iced::padding::right(14).bottom(14)))
+                .direction(scrollable::Direction::Both {
+                    vertical: scrollable::Scrollbar::default(),
+                    horizontal: scrollable::Scrollbar::default(),
+                })
+                .height(Length::Fill),
+        )
+        .padding(4)
+        .width(LIST_W)
+        .height(Length::Fill)
+        .style(theme::panel),
         // The pair spans exactly the list box above it, half each.
         row![
             wide_btn(tr("New queue"), Some(Message::SchNewQueue)),
@@ -337,17 +344,27 @@ fn files_tab(app: &App) -> El<'_> {
         .collect();
     members.sort_by_key(|d| d.q_order);
 
-    let mut list = column![].spacing(1);
-    list = list.push(
-        row![
-            cell(tr("File Name"), Length::Fill),
-            cell(tr("Size"), FILE_COL_W),
-            cell(tr("Status"), FILE_COL_W),
-            cell(tr("Time left"), FILE_COL_W),
-        ]
-        .spacing(4)
-        .padding([2, 4]),
-    );
+    let widths = app.cfg.settings.scheduler_column_widths;
+    let table_width = widths.iter().sum::<f32>() + 8.0;
+    let mut header = row![].spacing(0);
+    for (index, (label, width)) in ["File Name", "Size", "Status", "Time Left"]
+        .into_iter()
+        .zip(widths)
+        .enumerate()
+    {
+        header = header.push(cell(tr(label), width - COL_GRIP)).push(
+            mouse_area(
+                container(iced::widget::rule::vertical(1))
+                    .center_x(COL_GRIP)
+                    .height(20.0),
+            )
+            .interaction(iced::mouse::Interaction::ResizingHorizontally)
+            .on_press(Message::SchColResizeStart(index)),
+        );
+    }
+    let mut list = column![header.padding([2, 4])]
+        .spacing(1)
+        .width(table_width);
     for d in &members {
         let selected = app.sch.sel_file == Some(d.id);
         let dragging = app.sch.drag == Some(d.id);
@@ -357,18 +374,18 @@ fn files_tab(app: &App) -> El<'_> {
             mouse_area(
                 container(
                     row![
-                        cell(d.file_name.clone(), Length::Fill),
-                        cell(d.size.map(fmt::size2).unwrap_or_default(), FILE_COL_W),
-                        cell(d.status_text(), FILE_COL_W),
+                        cell(d.file_name.clone(), widths[0]),
+                        cell(d.size.map(fmt::size2).unwrap_or_default(), widths[1]),
+                        cell(d.status_text(), widths[2]),
                         cell(
                             match d.state {
                                 DlState::Receiving => d.eta_secs.map(fmt::eta).unwrap_or_default(),
                                 _ => String::new(),
                             },
-                            FILE_COL_W,
+                            widths[3],
                         ),
                     ]
-                    .spacing(4),
+                    .spacing(0),
                 )
                 .padding([1, 4])
                 .width(Length::Fill)
@@ -405,11 +422,18 @@ fn files_tab(app: &App) -> El<'_> {
         ]
         .spacing(8)
         .align_y(iced::Alignment::Center),
-        container(crate::ui::scroll(list).height(Length::Fill))
-            .padding(4)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(theme::panel),
+        container(
+            scrollable(container(list).padding(iced::padding::right(14).bottom(14)))
+                .direction(scrollable::Direction::Both {
+                    vertical: scrollable::Scrollbar::default(),
+                    horizontal: scrollable::Scrollbar::default(),
+                })
+                .height(Length::Fill),
+        )
+        .padding(4)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(theme::panel),
         row![
             dlg_btn(tr("⬇"), Some(Message::SchFileDown)),
             dlg_btn(tr("⬆"), Some(Message::SchFileUp)),
@@ -481,16 +505,19 @@ pub fn view(app: &App) -> El<'_> {
     .width(Length::Fill)
     .height(Length::Fill);
 
-    container(
-        row![queue_list(app), right]
-            .spacing(12)
-            .padding(12)
-            .width(Length::Fill)
-            .height(Length::Fill),
-    )
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .style(theme::window)
+    column![
+        container(
+            row![queue_list(app), right]
+                .spacing(12)
+                .padding(12)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(theme::window),
+        crate::ui::probe::cursor_probe(app.cursor_cell.clone()),
+    ]
     .into()
 }
 

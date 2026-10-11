@@ -333,6 +333,7 @@ fn boot_with_launch(login_launch: bool) -> (App, Task<Message>) {
 
     let quota_saved = (state.dl_quota.used, state.dl_quota.window_start);
     let mut app = App {
+        sort: (cfg.settings.sort_key, cfg.settings.sort_ascending),
         cfg,
         state,
         quota_saved,
@@ -505,6 +506,49 @@ fn style_of(_app: &App, t: &Theme) -> iced::theme::Style {
     }
 }
 
+fn subscription_event(
+    event: iced::Event,
+    status: iced::event::Status,
+    window: window::Id,
+) -> Option<Message> {
+    match event {
+        iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m)) => Some(Message::Mods(m)),
+        // Text fields consume editing keys before table actions and shortcuts
+        // are dispatched, so Delete and Cmd+A keep their normal editing behavior.
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key,
+            modified_key,
+            physical_key,
+            modifiers,
+            ..
+        }) if status == iced::event::Status::Ignored
+            && (modifiers.command()
+                || matches!(
+                    key,
+                    iced::keyboard::Key::Named(
+                        iced::keyboard::key::Named::Escape
+                            | iced::keyboard::key::Named::Enter
+                            | iced::keyboard::key::Named::F4
+                            | iced::keyboard::key::Named::Delete
+                    )
+                )) =>
+        {
+            let resolved_key = crate::app::resolve_latin_char(&key, &modified_key, physical_key)
+                .map(|c| iced::keyboard::Key::Character(c.to_string().into()))
+                .unwrap_or(key);
+            Some(Message::RawKey(resolved_key, modifiers, window))
+        }
+        iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
+            Some(Message::MouseUp)
+        }
+        iced::Event::Window(iced::window::Event::Moved(p)) => Some(Message::WinMoved(window, p)),
+        iced::Event::Window(iced::window::Event::Resized(s)) => {
+            Some(Message::WinResized(window, s))
+        }
+        _ => None,
+    }
+}
+
 fn subscription(app: &App) -> Subscription<Message> {
     #[cfg(target_os = "macos")]
     if app.startup_pending {
@@ -531,51 +575,7 @@ fn subscription(app: &App) -> Subscription<Message> {
         window::close_requests().map(Message::WindowCloseRequested),
         // Modifier state for Cmd/Ctrl/Shift multi-selection, and global
         // mouse-up to end a column-resize drag wherever it is released.
-        iced::event::listen_with(|event, status, window| match event {
-            iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m)) => {
-                Some(Message::Mods(m))
-            }
-            // Shortcuts fire only on events no widget consumed, so typing
-            // Cmd+A inside a text field still selects text, not downloads.
-            // Every editable combo carries the command modifier; Escape (a
-            // dialog's Cancel), Enter (its default button) and Alt+F4 (quit
-            // on Windows) are the fixed conventions that do not, and nothing
-            // else is passed on — an unconsumed keystroke otherwise costs a
-            // full repaint.
-            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                key,
-                modified_key,
-                physical_key,
-                modifiers,
-                ..
-            }) if status == iced::event::Status::Ignored
-                && (modifiers.command()
-                    || matches!(
-                        key,
-                        iced::keyboard::Key::Named(
-                            iced::keyboard::key::Named::Escape
-                                | iced::keyboard::key::Named::Enter
-                                | iced::keyboard::key::Named::F4
-                        )
-                    )) =>
-            {
-                let resolved_key =
-                    crate::app::resolve_latin_char(&key, &modified_key, physical_key)
-                        .map(|c| iced::keyboard::Key::Character(c.to_string().into()))
-                        .unwrap_or(key);
-                Some(Message::RawKey(resolved_key, modifiers, window))
-            }
-            iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
-                Some(Message::MouseUp)
-            }
-            iced::Event::Window(iced::window::Event::Moved(p)) => {
-                Some(Message::WinMoved(window, p))
-            }
-            iced::Event::Window(iced::window::Event::Resized(s)) => {
-                Some(Message::WinResized(window, s))
-            }
-            _ => None,
-        }),
+        iced::event::listen_with(subscription_event),
     ];
     // The power-action countdown shows a number of seconds, so it ticks at
     // one second even in power save — where the main tick is three apart.
@@ -587,7 +587,11 @@ fn subscription(app: &App) -> Subscription<Message> {
     // display macOS colour-converts that whole surface per present — so a
     // 120 Hz pointer meant 120 full repaints a second for a rectangle that
     // reads the same at 60. Power save halves it again.
-    if app.list_drag || app.resizing.is_some() || app.header_drag.is_some() {
+    if app.list_drag
+        || app.resizing.is_some()
+        || app.sch_resizing.is_some()
+        || app.header_drag.is_some()
+    {
         subs.push(
             iced::time::every(std::time::Duration::from_millis(if power_save {
                 33

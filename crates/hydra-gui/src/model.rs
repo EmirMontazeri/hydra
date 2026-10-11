@@ -85,6 +85,12 @@ pub struct DownloadItem {
     pub referer: Option<String>,
     /// Per-download cap, bytes/sec, when the Speed Limiter tab enables one.
     pub speed_limit: Option<u64>,
+    /// Last chosen cap, bytes/sec, retained while the limiter is disabled.
+    #[serde(default)]
+    pub speed_limit_value: Option<u64>,
+    /// Older records infer this from their active cap when the field is absent.
+    #[serde(default)]
+    pub remember_speed_limit: Option<bool>,
     /// Parked by the Connection tab's download limit, not by the user. The
     /// quota tick resumes exactly these when the window rolls over or the
     /// cap is raised; a hand-paused item carries `false` and stays put.
@@ -854,8 +860,8 @@ impl Column {
             Column::Queue => "Q",
             Column::Size => "Size",
             Column::Status => "Status",
-            Column::TimeLeft => "Time left",
-            Column::Rate => "Transfer rate",
+            Column::TimeLeft => "Time Left",
+            Column::Rate => "Transfer Rate",
             Column::LastTry => "Last Try Date",
             Column::Description => "Description",
         }
@@ -897,7 +903,7 @@ impl Column {
 
 /// The key the main download table is sorted by: either one of the columns,
 /// or the order in which items were added.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SortKey {
     Column(Column),
     OrderOfAddition,
@@ -1174,6 +1180,9 @@ pub struct Settings {
     /// shows them at all. [`load_config`] normalizes the list, so the rest of
     /// the program can rely on it naming every [`Column`] exactly once.
     pub columns: Vec<ColumnPref>,
+    pub sort_key: SortKey,
+    pub sort_ascending: bool,
+    pub scheduler_column_widths: [f32; 4],
     /// The old per-position width list, from before columns could be
     /// reordered or hidden. Read once at load, folded into `columns`, and
     /// dropped from the file on the next save.
@@ -1274,6 +1283,9 @@ impl Default for Settings {
             speed_limiter_on: false,
             speed_profiles: default_speed_profiles(),
             columns: vec![],
+            sort_key: SortKey::default(),
+            sort_ascending: false,
+            scheduler_column_widths: [300.0, 100.0, 100.0, 100.0],
             column_widths: vec![],
             window_size: None,
             window_pos: None,
@@ -1951,6 +1963,17 @@ fn migrate_user_agent(s: &mut Settings) {
 /// config from another version — or a hand-edited one — cannot leave a column
 /// unreachable: the manage dialog can only show what the list names.
 fn migrate_columns(s: &mut Settings) {
+    for (width, default) in s
+        .scheduler_column_widths
+        .iter_mut()
+        .zip(Settings::default().scheduler_column_widths)
+    {
+        *width = if width.is_finite() {
+            width.clamp(COL_MIN_W, COL_MAX_W)
+        } else {
+            default
+        };
+    }
     let legacy = std::mem::take(&mut s.column_widths);
     if s.columns.is_empty() {
         s.columns = Column::ALL.into_iter().map(ColumnPref::new).collect();
@@ -2143,6 +2166,28 @@ pub fn save_quota(q: &DlQuota) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn old_configs_keep_default_arrangement_and_scheduler_widths() {
+        let cfg = normalize_config(toml::from_str("[settings]\nfont_size = 13").unwrap());
+        assert_eq!(cfg.settings.sort_key, SortKey::Column(Column::LastTry));
+        assert!(!cfg.settings.sort_ascending);
+        assert_eq!(
+            cfg.settings.scheduler_column_widths,
+            [300.0, 100.0, 100.0, 100.0]
+        );
+    }
+
+    #[test]
+    fn scheduler_widths_recover_from_invalid_stored_values() {
+        let mut cfg = ConfigFile::default();
+        cfg.settings.scheduler_column_widths = [-1.0, 9999.0, f32::NAN, f32::INFINITY];
+        let cfg = normalize_config(cfg);
+        assert_eq!(
+            cfg.settings.scheduler_column_widths,
+            [COL_MIN_W, COL_MAX_W, 100.0, 100.0]
+        );
+    }
+
     #[test]
     fn ffmpeg_path_survives_config_roundtrip_and_draft_merge() {
         let mut settings: Settings = toml::from_str("").unwrap();
@@ -3042,6 +3087,8 @@ mod tests {
             cookie_source: None,
             referer: None,
             speed_limit: None,
+            speed_limit_value: None,
+            remember_speed_limit: None,
             limit_paused: false,
             held: vec![],
             part_path: None,
