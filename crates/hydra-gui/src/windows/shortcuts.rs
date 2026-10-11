@@ -38,7 +38,7 @@ pub fn view(app: &App) -> El<'_> {
                 .iter()
                 .enumerate()
                 .any(|(m, c)| m != n && *c == combos[n]);
-        let usable = combos[n].is_some() && !conflict;
+        let usable = value.trim().is_empty() || (combos[n].is_some() && !conflict);
         list = list.push(
             row![
                 text(tr(label)).size(theme::FONT_SIZE).width(Length::Fill),
@@ -56,7 +56,18 @@ pub fn view(app: &App) -> El<'_> {
             .align_y(iced::Alignment::Center),
         );
     }
-    let problems = combos.iter().filter(|c| c.is_none()).count()
+    let problems = combos
+        .iter()
+        .zip(SHORTCUT_ACTIONS)
+        .filter(|(combo, (id, _, _))| {
+            combo.is_none()
+                && app
+                    .cfg
+                    .shortcuts
+                    .get(*id)
+                    .is_some_and(|value| !value.trim().is_empty())
+        })
+        .count()
         + combos
             .iter()
             .enumerate()

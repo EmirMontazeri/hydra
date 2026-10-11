@@ -205,7 +205,7 @@ pub fn reinstall(
     );
     let _ = view.append(&hide_toolbar_text);
     let _ = view.append(&item("Columns", MenuAction::ManageColumns));
-    let arrange = Submenu::new(tr("Arrange files"), true);
+    let arrange = Submenu::new(tr("Arrange Files"), true);
     let mut sort_items = Vec::new();
     // Q holds an icon, not a value a reader can arrange by.
     for col in Column::ALL.into_iter().filter(|c| *c != Column::Queue) {
@@ -215,7 +215,7 @@ pub fn reinstall(
         sort_items.push((key, it));
     }
     let add_it = check(
-        "By order of addition",
+        "By Order of Addition",
         MenuAction::ArrangeBy(SortKey::OrderOfAddition),
         state.sort.0 == SortKey::OrderOfAddition,
     );

@@ -216,7 +216,7 @@ pub fn entries(kind: MenuBarKind, app: &App) -> Vec<Entry> {
             Entry::item(tr("Hide toolbar text"), MenuAction::HideToolbarText)
                 .check(!app.cfg.settings.show_toolbar_labels),
             Entry::item(tr("Columns"), MenuAction::ManageColumns),
-            Entry::sub(tr("Arrange files"), arrange_entries(app)),
+            Entry::sub(tr("Arrange Files"), arrange_entries(app)),
             Entry::sub(
                 tr("Theme"),
                 crate::theme::THEME_CHOICES
@@ -280,7 +280,7 @@ pub fn arrange_entries(app: &App) -> Vec<Entry> {
     }
     v.push(
         Entry::item(
-            tr("By order of addition"),
+            tr("By Order of Addition"),
             MenuAction::ArrangeBy(SortKey::OrderOfAddition),
         )
         .check(app.sort.0 == SortKey::OrderOfAddition)
@@ -334,7 +334,7 @@ pub fn header_entries(app: &App, col: Column) -> Vec<Entry> {
         )
         .sep(),
     );
-    v.push(Entry::sub(tr("Arrange files"), arrange_entries(app)).sep());
+    v.push(Entry::sub(tr("Arrange Files"), arrange_entries(app)).sep());
     v.push(Entry::item(tr("Columns"), MenuAction::ManageColumns));
     v
 }
