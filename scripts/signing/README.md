@@ -1,20 +1,25 @@
 # Windows release signing
 
-`release.yml` calls the reusable `sign-windows.yml` after the build matrix and
-Windows FFI builds complete. Both AMD64 and ARM64 pass through signing before
-release upload. Unsigned inputs use `unsigned-` artifact names; publication
-selects only final artifacts. Standalone `hydra-torrent-native.dll` and
+`release.yml` skips Windows Authenticode signing unless repository variable
+`SIGNPATH_RELEASE_SIGNING_ENABLED` is exactly `true`. With signing disabled,
+Windows application and FFI builds and the official plugin bundle use their
+normal final artifact names, without an `unsigned-` prefix. Release notes state
+that Windows files are not Authenticode signed. Plugin publisher signatures
+remain enabled independently of Authenticode.
+
+When enabled, the release calls the reusable `sign-windows.yml` after the build
+matrix and Windows FFI builds complete, using only the production certificate.
+Both AMD64 and ARM64 pass through signing before release upload. Unsigned inputs
+use `unsigned-` artifact names; publication selects only final artifacts.
+Standalone `hydra-torrent-native.dll` and
 `hydra-torrent-native.pdb` are excluded from release assets; the signed DLL stays
 inside its plugin package. Signing failure blocks publication.
 
-Set repository variable `SIGNPATH_TEST_SIGNING` to `true` (the default) for the
-test certificate, or `false` for production. The release exposes this value as
-the boolean environment variable `SIGNPATH_TEST_SIGNING` and passes it as a typed
-workflow input. Any other value fails. Test releases keep the normal filenames
-and include a notice in the release notes that Windows does not trust the test
-certificate.
+The release workflow no longer uses `SIGNPATH_TEST_SIGNING`. Test signing remains
+available to callers of `sign-windows.yml` through its `test_signing` input for
+onboarding; test certificates are not used by the release workflow.
 
-Both modes require repository secrets `SIGNPATH_API_TOKEN` and
+Signing requires repository secrets `SIGNPATH_API_TOKEN` and
 `HYDRA_PLUGIN_SIGNING_KEY`. Production also requires
 `SIGNPATH_RELEASE_SIGNING_ENABLED=true` and a production
 `SIGNPATH_CERTIFICATE_THUMBPRINT`, as described below. Production errors never
@@ -102,9 +107,10 @@ After SignPath Foundation issues/imports the production certificate:
 2. Set repository variable `SIGNPATH_CERTIFICATE_THUMBPRINT` to the production
    certificate's SHA-1 thumbprint: 40 hexadecimal characters without spaces. The
    workflow refuses to use the test certificate as the production certificate.
-3. Set `SIGNPATH_RELEASE_SIGNING_ENABLED=true`.
-4. Manually run the workflow on `main`, selecting **release-signing**. Production
-   signing is never selected automatically by a push.
+3. After validating production signing, set `SIGNPATH_RELEASE_SIGNING_ENABLED=true`
+   to enable it for releases. Leave it unset or `false` while signing is unavailable.
+4. Run the release workflow with the new configuration. Enabled signing failures
+   block publication; they never fall back to unsigned output.
 
 Each request uses `hydra-files` explicitly and submits loose files inside the
 GitHub artifact ZIP. Compare that configuration with `artifact-configuration.xml`

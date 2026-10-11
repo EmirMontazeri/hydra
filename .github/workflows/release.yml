@@ -94,7 +94,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: unsigned-official-plugins
+          name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: official-plugins
 
       - name: Install packaging validation tools
@@ -207,7 +207,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: unsigned-official-plugins
+          name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: plugins/bundled
 
       # musl-tools is for the static CLI below: `ring` and `blake3` compile C
@@ -407,7 +407,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os == 'windows' && 'unsigned-' || '' }}hydra-${{ env.PLATFORM }}
+          name: ${{ matrix.os == 'windows' && vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-' || '' }}hydra-${{ env.PLATFORM }}
           path: dist/*
           if-no-files-found: error
 
@@ -474,7 +474,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: unsigned-official-plugins
+          name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: plugins/bundled
 
       - name: Install Rust toolchain
@@ -670,7 +670,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: unsigned-official-plugins
+          name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: plugins/bundled
 
       - name: Install Flatpak build tools
@@ -942,7 +942,7 @@ jobs:
       - name: Upload libhydra artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os == 'Windows' && 'unsigned-' || '' }}libhydra-${{ matrix.target }}
+          name: ${{ runner.os == 'Windows' && vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-' || '' }}libhydra-${{ matrix.target }}
           # .tar.gz for Unix targets, .zip for Windows ones; the build script
           # picks per target, so both globs are listed and one matches.
           path: |
@@ -1130,7 +1130,7 @@ jobs:
           PYZIP
       - uses: actions/upload-artifact@v4
         with:
-          name: unsigned-official-plugins
+          name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: |
             dist/youtube-download.hyaplugin
             dist/native/**/*.hyaplugin
@@ -1139,31 +1139,22 @@ jobs:
             dist/bundle-version.txt
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true'
         with:
           name: unsigned-official-native-plugins
           path: dist/torrent-download-*.hyaplugin
           if-no-files-found: error
 
-  signing-mode:
-    runs-on: ubuntu-latest
-    outputs:
-      test_signing: ${{ steps.mode.outputs.test_signing }}
-    env:
-      SIGNPATH_TEST_SIGNING: ${{ vars.SIGNPATH_TEST_SIGNING || 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: mode
-        run: bash scripts/signing/select-signing-mode.sh
-
   sign-windows:
+    if: vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true'
     permissions:
       contents: read
       actions: read
-    needs: [verify-version, build, build-ffi, signing-mode]
+    needs: [verify-version, build, build-ffi]
     uses: ./.github/workflows/sign-windows.yml
     with:
       version: ${{ needs.verify-version.outputs.version }}
-      test_signing: ${{ fromJSON(needs.signing-mode.outputs.test_signing) }}
+      test_signing: false
     secrets:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
       HYDRA_PLUGIN_SIGNING_KEY: ${{ secrets.HYDRA_PLUGIN_SIGNING_KEY }}
@@ -1206,7 +1197,6 @@ jobs:
         build,
         sign-windows,
         signed-official-plugins,
-        signing-mode,
         build-appimage,
         verify-appimage,
         build-flatpak,
@@ -1246,6 +1236,7 @@ jobs:
           mv dist/native plugins/bundled/native
 
       - name: Download signed installation scripts
+        if: vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true'
         uses: actions/download-artifact@v4
         with:
           name: windows-installation-scripts
@@ -1265,8 +1256,8 @@ jobs:
           set -euo pipefail
           gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             -f tag_name="${GITHUB_REF_NAME}" --jq .body > RELEASE_NOTES.md
-          if [ "${{ needs.signing-mode.outputs.test_signing }}" = true ]; then
-            printf '\nWindows files are signed with a test certificate and are not trusted by Windows.\n' >> RELEASE_NOTES.md
+          if [ "${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED }}" != true ]; then
+            printf '\nWindows files are not Authenticode signed.\n' >> RELEASE_NOTES.md
           fi
           cat RELEASE_NOTES.md
 
