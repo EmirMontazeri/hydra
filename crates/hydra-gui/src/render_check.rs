@@ -967,6 +967,111 @@ fn plugin_track_picker_and_subtitles_render() {
 }
 
 #[test]
+fn scheduler_queue_rows_are_visible_and_selectable() {
+    for mode in [
+        crate::model::ThemeMode::Dark,
+        crate::model::ThemeMode::Light,
+    ] {
+        for scale in [1.0, 2.0] {
+            let mut app = app_with(0);
+            app.cfg = crate::model::normalize_config(app.cfg);
+            app.cfg.settings.theme_mode = Some(mode);
+            app.sch.queue = app.cfg.queues[0].name.clone();
+            let second_queue = app.cfg.queues[1].name.clone();
+            let mut h = Harness::new(
+                app,
+                WinKind::Scheduler,
+                Size::new(950.0, 660.0),
+                scale,
+                true,
+            );
+            h.step("scheduler queues", &[]);
+            let before = h.shown.clone();
+            h.hover("second queue", Point::new(80.0, 90.0));
+            h.step(
+                "select second queue",
+                &[
+                    Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                    Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                ],
+            );
+            assert_eq!(h.app.sch.queue, second_queue);
+            let width = physical(h.logical, scale).width as usize;
+            let list_changed = ((50.0 * scale) as usize..(130.0 * scale) as usize).any(|y| {
+                ((20.0 * scale) as usize..(230.0 * scale) as usize)
+                    .any(|x| before[y * width + x] != h.shown[y * width + x])
+            });
+            assert!(
+                list_changed,
+                "queue selection must repaint the visible list"
+            );
+            h.assert_clean("scheduler queues");
+            dump(
+                "scheduler-queues",
+                &h.shown,
+                &h.shown,
+                physical(h.logical, scale),
+            );
+        }
+    }
+}
+
+#[test]
+fn scheduler_custom_queues_remain_visible_when_renaming_and_scrolling() {
+    let mut app = app_with(0);
+    app.cfg = crate::model::normalize_config(app.cfg);
+    app.cfg.settings.theme_mode = Some(crate::model::ThemeMode::Dark);
+    let template = app.cfg.queues[0].clone();
+    for i in 9..49 {
+        let mut queue = template.clone();
+        queue.name = format!("Queue {i}");
+        queue.builtin = false;
+        app.cfg.queues.push(queue);
+    }
+    app.sch.queue = "Queue 9".into();
+    let mut h = Harness::new(app, WinKind::Scheduler, Size::new(950.0, 660.0), 1.0, true);
+    h.step("custom queues", &[]);
+    let before = h.shown.clone();
+    let _ = h.app.update(crate::app::Message::SchNameEdit);
+    h.step("rename custom queue", &[]);
+    assert!(h.app.sch.renaming);
+    let list_pixels = |pixels: &[u32]| {
+        (50..630)
+            .flat_map(|y| (20..230).map(move |x| pixels[y * 950 + x]))
+            .collect::<Vec<_>>()
+    };
+    assert_ne!(list_pixels(&before), list_pixels(&h.shown));
+    h.app.sch.renaming = false;
+    h.step("finish renaming", &[]);
+    h.hover("queue list scroll", Point::new(80.0, 300.0));
+    h.step(
+        "scroll custom queues",
+        &[Event::Mouse(mouse::Event::WheelScrolled {
+            delta: mouse::ScrollDelta::Pixels { x: 0.0, y: -2000.0 },
+        })],
+    );
+    assert_ne!(list_pixels(&before), list_pixels(&h.shown));
+    h.hover("queue after scrolling", Point::new(80.0, 300.0));
+    h.step(
+        "select queue after scrolling",
+        &[
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+        ],
+    );
+    let selected: u32 = h
+        .app
+        .sch
+        .queue
+        .strip_prefix("Queue ")
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(selected > 20, "scrolling must expose later queues");
+    h.assert_clean("custom scheduler queues");
+}
+
+#[test]
 fn scheduler_columns_resize_through_the_header_and_repaint_cleanly() {
     use crate::app::{Message, SchTab};
 
