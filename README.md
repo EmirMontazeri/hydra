@@ -10,6 +10,12 @@
 </p>
 
 <p align="center">
+  <a href="https://chromewebstore.google.com/detail/hydra-download-manager-in/oieelfilllghmbnhofajpgpmmilfihmo"><img src="docs/img/extension-badges/chrome.png" alt="Available in the Chrome Web Store" height="48"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/hydra-download-manager-in/obemipfpeenmhkdpkobdkeedhdakaoai"><img src="docs/img/extension-badges/edge.png" alt="Get it from Microsoft Edge" height="48"></a>
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/hdm-integration/"><img src="docs/img/extension-badges/firefox.png" alt="Get the Firefox add-on" height="48"></a>
+</p>
+
+<p align="center">
   <a href="https://crates.io/crates/hya-core"><img src="https://img.shields.io/crates/v/hya-core.svg?style=flat-square" alt="crates.io"></a>
   <a href="https://docs.rs/hya-core"><img src="https://img.shields.io/docsrs/hya-core?style=flat-square" alt="docs.rs"></a>
   <a href="https://codecov.io/gh/ja7ad/hydra"><img src="https://codecov.io/gh/ja7ad/hydra/graph/badge.svg?token=bQuMUwagma" alt="Coverage"/></a>

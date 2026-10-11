@@ -400,11 +400,35 @@
       max-width: 52ch;
     }
 
+    .hero-actions {
+      width: fit-content;
+      max-width: 100%;
+    }
+
     .hero-ctas {
       margin-top: 34px;
       display: flex;
       gap: 14px;
       flex-wrap: wrap;
+    }
+
+    .extension-badges {
+      margin-top: 18px;
+      justify-content: center;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .extension-badges a {
+      display: inline-flex;
+    }
+
+    .extension-badges img {
+      display: block;
+      height: 32px;
+      width: auto;
     }
 
     .shot {
@@ -1499,6 +1523,14 @@
     }
 
     @media (max-width: 540px) {
+      .hero-actions {
+        width: 100%;
+      }
+
+      .extension-badges {
+        display: none;
+      }
+
       .wrap {
         padding: 0 16px;
       }
@@ -1732,15 +1764,28 @@
         <p>An open-source, high-performance download manager and accelerator that splits every file across parallel
           connections and mirror sources. Featuring dynamic range stealing and real-time stall recovery for Windows,
           macOS, and Linux.</p>
-        <div class="hero-ctas">
-          <a class="btn btn-primary" href="#download">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16" />
-            </svg>
-            Download HDM
-          </a>
-          <a class="btn btn-ghost" href="https://github.com/ja7ad/hydra">View on GitHub</a>
+        <div class="hero-actions">
+          <div class="hero-ctas">
+            <a class="btn btn-primary" href="#download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v13m0 0l-5-5m5 5l5-5M4 21h16" />
+              </svg>
+              Download HDM
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/ja7ad/hydra">View on GitHub</a>
+          </div>
+          <div class="extension-badges" role="group" aria-label="Download browser extensions">
+            <a href="https://chromewebstore.google.com/detail/hydra-download-manager-in/oieelfilllghmbnhofajpgpmmilfihmo">
+              <img src="img/extension-badges/chrome.png" alt="Available in the Chrome Web Store" height="32">
+            </a>
+            <a href="https://microsoftedge.microsoft.com/addons/detail/hydra-download-manager-in/obemipfpeenmhkdpkobdkeedhdakaoai">
+              <img src="img/extension-badges/edge.png" alt="Get it from Microsoft Edge" height="32">
+            </a>
+            <a href="https://addons.mozilla.org/en-US/firefox/addon/hdm-integration/">
+              <img src="img/extension-badges/firefox.png" alt="Get the Firefox add-on" height="32">
+            </a>
+          </div>
         </div>
       </div>
       <div class="shot">

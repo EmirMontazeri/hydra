@@ -2,7 +2,8 @@ User-agent: *
 Allow: /
 
 # Working directories — not part of the published site.
-Disallow: /design/
-Disallow: /letter/
+Disallow: /ffi/
+Disallow: /man/
+Disallow: /testing/
 
 Sitemap: https://hydra.javad.dev/sitemap.xml
