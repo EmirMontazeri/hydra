@@ -94,7 +94,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: official-plugins
+          name: unsigned-official-plugins
           path: official-plugins
 
       - name: Install packaging validation tools
@@ -207,7 +207,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: official-plugins
+          name: unsigned-official-plugins
           path: plugins/bundled
 
       # musl-tools is for the static CLI below: `ring` and `blake3` compile C
@@ -407,7 +407,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hydra-${{ env.PLATFORM }}
+          name: ${{ matrix.os == 'windows' && 'unsigned-' || '' }}hydra-${{ env.PLATFORM }}
           path: dist/*
           if-no-files-found: error
 
@@ -474,7 +474,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: official-plugins
+          name: unsigned-official-plugins
           path: plugins/bundled
 
       - name: Install Rust toolchain
@@ -670,7 +670,7 @@ jobs:
       - name: Download signed official plugins
         uses: actions/download-artifact@v4
         with:
-          name: official-plugins
+          name: unsigned-official-plugins
           path: plugins/bundled
 
       - name: Install Flatpak build tools
@@ -942,7 +942,7 @@ jobs:
       - name: Upload libhydra artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libhydra-${{ matrix.target }}
+          name: ${{ runner.os == 'Windows' && 'unsigned-' || '' }}libhydra-${{ matrix.target }}
           # .tar.gz for Unix targets, .zip for Windows ones; the build script
           # picks per target, so both globs are listed and one matches.
           path: |
@@ -1130,7 +1130,7 @@ jobs:
           PYZIP
       - uses: actions/upload-artifact@v4
         with:
-          name: official-plugins
+          name: unsigned-official-plugins
           path: |
             dist/youtube-download.hyaplugin
             dist/native/**/*.hyaplugin
@@ -1140,8 +1140,58 @@ jobs:
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: official-native-plugins
+          name: unsigned-official-native-plugins
           path: dist/torrent-download-*.hyaplugin
+          if-no-files-found: error
+
+  signing-mode:
+    runs-on: ubuntu-latest
+    outputs:
+      test_signing: ${{ steps.mode.outputs.test_signing }}
+    env:
+      SIGNPATH_TEST_SIGNING: ${{ vars.SIGNPATH_TEST_SIGNING || 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: mode
+        run: bash scripts/signing/select-signing-mode.sh
+
+  sign-windows:
+    permissions:
+      contents: read
+      actions: read
+    needs: [verify-version, build, build-ffi, signing-mode]
+    uses: ./.github/workflows/sign-windows.yml
+    with:
+      version: ${{ needs.verify-version.outputs.version }}
+      test_signing: ${{ fromJSON(needs.signing-mode.outputs.test_signing) }}
+    secrets:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      HYDRA_PLUGIN_SIGNING_KEY: ${{ secrets.HYDRA_PLUGIN_SIGNING_KEY }}
+
+  signed-official-plugins:
+    needs: [sign-windows, build-official-plugins]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-official-plugins
+          path: signed-plugins
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-official-native-plugins
+          path: native-packages
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hydra-windows-*
+          path: signed-windows
+          merge-multiple: true
+      - name: Replace Windows plugins and rebuild the official bundle
+        run: python3 scripts/signing/windows-release.py refresh-bundle --architecture x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-plugins
+          path: signed-plugins/*
           if-no-files-found: error
 
   release:
@@ -1154,6 +1204,9 @@ jobs:
         verify-official-plugins,
         verify-packaging,
         build,
+        sign-windows,
+        signed-official-plugins,
+        signing-mode,
         build-appimage,
         verify-appimage,
         build-flatpak,
@@ -1182,14 +1235,21 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: '{hydra-*,libhydra-*,official-plugins}'
           path: dist
           merge-multiple: true
 
-      - name: Exclude unsigned verification artifacts from release assets
+      - name: Exclude intermediate files from release assets
         run: |
-          rm -f dist/unsigned-*.hyaplugin
+          rm -f dist/unsigned-*.hyaplugin dist/hydra-torrent-native.dll dist/hydra-torrent-native.pdb
           mkdir -p plugins/bundled
           mv dist/native plugins/bundled/native
+
+      - name: Download signed installation scripts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installation-scripts
+          path: dist
 
       - name: Generate checksums
         run: |
@@ -1205,6 +1265,9 @@ jobs:
           set -euo pipefail
           gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             -f tag_name="${GITHUB_REF_NAME}" --jq .body > RELEASE_NOTES.md
+          if [ "${{ needs.signing-mode.outputs.test_signing }}" = true ]; then
+            printf '\nWindows files are signed with a test certificate and are not trusted by Windows.\n' >> RELEASE_NOTES.md
+          fi
           cat RELEASE_NOTES.md
 
       # A pre-release tag (v0.3.0-rc) is published as a GitHub pre-release and

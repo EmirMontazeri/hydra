@@ -67,5 +67,37 @@ class ConfigurationTests(unittest.TestCase):
         self.assertFalse(values)
 
 
+class ModeSelectionTests(unittest.TestCase):
+    def select(self, value=None):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'output'
+            env = {'PATH': os.environ['PATH'], 'GITHUB_OUTPUT': str(output)}
+            if value is not None:
+                env['SIGNPATH_TEST_SIGNING'] = value
+            result = subprocess.run(['bash', str(SCRIPT.with_name('select-signing-mode.sh'))],
+                                    env=env, text=True, capture_output=True)
+            return result, output.read_text() if output.exists() else ''
+
+    def test_unconfigured_releases_use_the_test_certificate(self):
+        for value in (None, '', 'true'):
+            with self.subTest(value=value):
+                result, output = self.select(value)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(output, 'test_signing=true\n')
+
+    def test_disabling_test_mode_selects_production(self):
+        result, output = self.select('false')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(output, 'test_signing=false\n')
+
+    def test_malformed_flags_fail_instead_of_selecting_a_certificate(self):
+        for value in ('False', '0', 'yes', ' false ', 'false\ntest_signing=true'):
+            with self.subTest(value=value):
+                result, output = self.select(value)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('must be true or false', result.stdout)
+                self.assertFalse(output)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -2,14 +2,6 @@ name: Sign Windows v1.1.0
 run-name: Windows v1.1.0 ${{ inputs.signing_policy || 'test-signing' }}
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/sign-windows-v1.1.0.yml
-      - scripts/signing/**
-      - .github/actions/sign-windows/**
-      - install.ps1
-      - uninstall.ps1
   workflow_dispatch:
     inputs:
       signing_policy:
@@ -30,9 +22,8 @@ concurrency:
 
 jobs:
   preflight:
-    if: >-
-      github.repository == 'ja7ad/hydra' && github.ref == 'refs/heads/main'
-      && (github.event_name == 'workflow_dispatch' || vars.SIGNPATH_TEST_SIGNING_ENABLED == 'true')
+    # Retained for reference; releases use sign-windows.yml.
+    if: ${{ false }}
     outputs:
       signing_policy: ${{ steps.configuration.outputs.signing_policy }}
       certificate_thumbprint: ${{ steps.configuration.outputs.certificate_thumbprint }}

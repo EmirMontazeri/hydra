@@ -1,0 +1,239 @@
+name: Sign Windows
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Workspace product version of the calling release.
+        required: true
+        type: string
+      test_signing:
+        description: Use the SignPath test certificate instead of production.
+        type: boolean
+        default: true
+    secrets:
+      SIGNPATH_API_TOKEN:
+        required: true
+      HYDRA_PLUGIN_SIGNING_KEY:
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    outputs:
+      signing_policy: ${{ steps.configuration.outputs.signing_policy }}
+      certificate_thumbprint: ${{ steps.configuration.outputs.certificate_thumbprint }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test signing packaging helpers
+        run: python3 -m unittest discover -s scripts/signing -p 'test_*.py'
+      - name: Check signing configuration
+        id: configuration
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          HYDRA_PLUGIN_SIGNING_KEY: ${{ secrets.HYDRA_PLUGIN_SIGNING_KEY }}
+          SIGNING_POLICY: ${{ inputs.test_signing && 'test-signing' || 'release-signing' }}
+          RELEASE_ENABLED: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED }}
+          RELEASE_THUMBPRINT: ${{ vars.SIGNPATH_CERTIFICATE_THUMBPRINT }}
+        run: bash scripts/signing/configure-signing.sh
+
+  sign:
+    name: Sign Windows ${{ matrix.architecture }}
+    needs: preflight
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            arch: amd64
+            installer_arch: x64
+            target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            plugin_artifact: official-plugin-build-torrent-windows-2022
+          - architecture: aarch64
+            arch: arm64
+            installer_arch: arm64
+            target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            plugin_artifact: official-plugin-build-torrent-windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCHITECTURE: ${{ matrix.architecture }}
+      TARGET: ${{ matrix.target }}
+      INSTALLER_ARCH: ${{ matrix.installer_arch }}
+      SIGNING_POLICY: ${{ needs.preflight.outputs.signing_policy }}
+      VERSION: ${{ inputs.version }}
+      CERTIFICATE_THUMBPRINT: ${{ needs.preflight.outputs.certificate_thumbprint }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Authenticode verification guards
+        shell: pwsh
+        run: ./scripts/signing/test-authenticode.ps1
+      - name: Checkout exact released source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: source
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.architecture == 'aarch64' && 'arm64' || 'x64' }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-official-plugins
+          path: source/plugins/bundled
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.plugin_artifact }}
+          path: original-unsigned
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-hydra-windows-${{ matrix.arch }}
+          path: original-windows
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: source
+          key: signing-${{ matrix.target }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-libhydra-${{ matrix.target }}
+          path: original-ffi
+      - name: Build plugin packaging tool and stage released torrent DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --locked --manifest-path source/Cargo.toml -p hya-plugin-cli
+          python scripts/signing/windows-release.py prepare-plugin --architecture "$ARCHITECTURE" --version "$VERSION"
+      - name: Stage Windows FFI DLLs
+        shell: bash
+        run: python scripts/signing/windows-release.py prepare-ffi --architecture "$ARCHITECTURE"
+      - name: Sign and verify torrent and FFI DLLs before packaging
+        uses: ./.github/actions/sign-windows
+        with:
+          artifact-name: unsigned-native-${{ matrix.architecture }}
+          unsigned-directory: unsigned-native
+          signed-directory: signed-native
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          certificate-thumbprint: ${{ needs.preflight.outputs.certificate_thumbprint }}
+          signing-policy: ${{ needs.preflight.outputs.signing_policy }}
+      - name: Repack signed Windows FFI libraries
+        shell: bash
+        run: python scripts/signing/windows-release.py repack-ffi --architecture "$ARCHITECTURE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libhydra-${{ matrix.target }}
+          path: ffi-dist/*.zip
+          if-no-files-found: error
+      - name: Regenerate plugin checksums and publisher signature
+        shell: bash
+        env:
+          HYDRA_PLUGIN_SIGNING_KEY: ${{ secrets.HYDRA_PLUGIN_SIGNING_KEY }}
+        run: python scripts/signing/windows-release.py repack-plugin --architecture "$ARCHITECTURE" --version "$VERSION"
+      - name: Build applications with the signed torrent package embedded
+        shell: bash
+        env:
+          HYDRA_OFFICIAL_PLUGIN_DIR: ${{ github.workspace }}/source/plugins/bundled
+        run: |
+          set -euo pipefail
+          cargo build --release --locked --manifest-path source/Cargo.toml --target "$TARGET" \
+            -p hya-cli -p hya-gui -p hya-host -p hya-updater -p hya-plugin-cli
+          python scripts/signing/windows-release.py stage-app --architecture "$ARCHITECTURE" --version "$VERSION"
+      - name: Install NSIS
+        shell: bash
+        run: |
+          choco install nsis -y --no-progress
+          echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
+      - name: Sign and verify applications, launcher and scripts
+        uses: ./.github/actions/sign-windows
+        with:
+          artifact-name: unsigned-app-${{ matrix.architecture }}
+          unsigned-directory: unsigned-app
+          signed-directory: signed-app
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          certificate-thumbprint: ${{ needs.preflight.outputs.certificate_thumbprint }}
+          signing-policy: ${{ needs.preflight.outputs.signing_policy }}
+      - name: Preserve signed root installation scripts
+        if: matrix.architecture == 'x86_64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installation-scripts
+          path: signed-app/remote-installers/*.ps1
+          if-no-files-found: error
+          retention-days: 30
+      - name: Install signed applications and scripts before exporting the uninstaller
+        shell: bash
+        run: python scripts/signing/windows-release.py install-app --architecture "$ARCHITECTURE"
+      - name: Export uninstaller for signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/signing/windows-release.py export-uninstaller --architecture "$ARCHITECTURE" --version "$VERSION"
+          cd source
+          scripts/build-windows-installer.sh "$INSTALLER_ARCH" --no-build
+      - name: Stage uninstaller containing signed PowerShell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir unsigned-uninstaller
+          cp unsigned-app/uninstall.exe unsigned-uninstaller/
+      - name: Sign and verify uninstaller
+        uses: ./.github/actions/sign-windows
+        with:
+          artifact-name: unsigned-uninstaller-${{ matrix.architecture }}
+          unsigned-directory: unsigned-uninstaller
+          signed-directory: signed-uninstaller
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          certificate-thumbprint: ${{ needs.preflight.outputs.certificate_thumbprint }}
+          signing-policy: ${{ needs.preflight.outputs.signing_policy }}
+      - name: Package signed applications and uninstaller
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp signed-uninstaller/uninstall.exe signed-app/
+          python scripts/signing/windows-release.py import-uninstaller --architecture "$ARCHITECTURE" --version "$VERSION"
+          cd source
+          scripts/build-windows-installer.sh "$INSTALLER_ARCH" --no-build
+          scripts/package-windows-portable.sh "${{ matrix.arch }}" --no-build
+          cd ..
+          python scripts/signing/windows-release.py repack --architecture "$ARCHITECTURE" --version "$VERSION"
+          mkdir unsigned-installer
+          cp "source/target/hydra-${VERSION}-windows-$INSTALLER_ARCH-setup.exe" unsigned-installer/
+      - name: Sign and verify final installer
+        uses: ./.github/actions/sign-windows
+        with:
+          artifact-name: unsigned-installer-${{ matrix.architecture }}
+          unsigned-directory: unsigned-installer
+          signed-directory: signed-installer
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          certificate-thumbprint: ${{ needs.preflight.outputs.certificate_thumbprint }}
+          signing-policy: ${{ needs.preflight.outputs.signing_policy }}
+      - name: Stage signed installer and report checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp signed-installer/*.exe dist/
+          cd dist
+          sha256sum -- * >> "$GITHUB_STEP_SUMMARY"
+      - name: Mark test outputs and report signing mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Signing policy: $SIGNING_POLICY" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIGNING_POLICY" = test-signing ]; then
+            echo '::warning::Windows artifacts use the untrusted test certificate.'
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hydra-windows-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
