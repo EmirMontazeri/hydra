@@ -110,7 +110,7 @@ fn wide_btn<'a>(label: String, msg: Option<Message>) -> El<'a> {
 }
 
 fn queue_list(app: &App) -> El<'_> {
-    let mut list = column![].spacing(2);
+    let mut list = column![].spacing(2).width(Length::Fill);
     for q in &app.cfg.queues {
         let selected = app.sch.queue == q.name;
         // Renaming in place: the selected row becomes the edit field.
@@ -162,10 +162,7 @@ fn queue_list(app: &App) -> El<'_> {
         .align_y(iced::Alignment::Center),
         container(
             scrollable(container(list).padding(iced::padding::right(14).bottom(14)))
-                .direction(scrollable::Direction::Both {
-                    vertical: scrollable::Scrollbar::default(),
-                    horizontal: scrollable::Scrollbar::default(),
-                })
+                .width(Length::Fill)
                 .height(Length::Fill),
         )
         .padding(4)
