@@ -228,12 +228,36 @@ class SigningPackagingTests(unittest.TestCase):
                    'libhydra/lib/hydra.lib': b'static library', 'libhydra/include/hydra.h': b'header'}
         self.archive('original-ffi/libhydra-0.9.0-aarch64-pc-windows-msvc.zip', entries)
         release.prepare_ffi(self.root)
-        self.assertEqual((self.root / 'unsigned-native/ffi/libhydra/bin/hydra.dll').read_bytes(), b'unsigned DLL')
-        self.write('signed-native/ffi/libhydra/bin/hydra.dll', b'signed DLL')
+        self.assertEqual((self.root / 'unsigned-native/ffi-0-hydra.dll').read_bytes(), b'unsigned DLL')
+        self.write('signed-native/ffi-0-hydra.dll', b'signed DLL')
         release.repack_ffi(self.root)
         with zipfile.ZipFile(self.root / 'ffi-dist/libhydra-0.9.0-aarch64-pc-windows-msvc.zip') as archive:
             self.assertEqual(archive.read('libhydra/bin/hydra.dll'), b'signed DLL')
             self.assertEqual(archive.read('libhydra/lib/hydra.lib'), b'static library')
+            self.assertEqual(archive.read('libhydra/include/hydra.h'), b'header')
+
+    def test_ffi_signing_flattens_nested_dlls_without_filename_collisions(self):
+        entries = {'libhydra/z/hydra.dll': b'unsigned second DLL',
+                   'libhydra/lib/hydra.dll': b'unsigned first DLL',
+                   'libhydra/include/hydra.h': b'header'}
+        self.archive('original-ffi/libhydra-1.0.0-x86_64-pc-windows-msvc.zip', entries)
+        self.write('unsigned-native/hydra-plugin.exe', b'plugin tool')
+        self.write('unsigned-native/torrent-windows-x86_64.dll', b'torrent DLL')
+        release.prepare_ffi(self.root)
+        unsigned = self.root / 'unsigned-native'
+        self.assertEqual({path.name for path in unsigned.iterdir()},
+                         {'hydra-plugin.exe', 'torrent-windows-x86_64.dll',
+                          'ffi-0-hydra.dll', 'ffi-1-hydra.dll'})
+        self.assertEqual((unsigned / 'ffi-0-hydra.dll').read_bytes(), b'unsigned first DLL')
+        self.assertEqual((unsigned / 'ffi-1-hydra.dll').read_bytes(), b'unsigned second DLL')
+        self.assertEqual((unsigned / 'torrent-windows-x86_64.dll').read_bytes(), b'torrent DLL')
+        self.write('signed-native/ffi-1-hydra.dll', b'signed second DLL')
+        self.write('signed-native/ffi-0-hydra.dll', b'signed first DLL')
+        release.repack_ffi(self.root)
+        with zipfile.ZipFile(self.root / 'ffi-dist/libhydra-1.0.0-x86_64-pc-windows-msvc.zip') as archive:
+            self.assertEqual(set(archive.namelist()), set(entries))
+            self.assertEqual(archive.read('libhydra/lib/hydra.dll'), b'signed first DLL')
+            self.assertEqual(archive.read('libhydra/z/hydra.dll'), b'signed second DLL')
             self.assertEqual(archive.read('libhydra/include/hydra.h'), b'header')
 
     def test_ffi_requires_one_archive_with_dll_and_complete_signed_output(self):

@@ -33,6 +33,9 @@ signature are regenerated. Applications are rebuilt from the same release SHA
 to embed that package. Applications, portable launcher, PowerShell scripts and
 exported uninstaller are signed before packaging; setup is signed last. FFI ZIPs
 preserve their own library version, static libraries, headers and documentation.
+FFI DLLs are staged as root-level `ffi-<index>-<name>.dll` files for signing, then
+restored to their original archive paths. The index keeps identical DLL names in
+different directories distinct and avoids relying on nested DLL signing rules.
 The shared official bundle and individual Windows plugin assets are replaced
 together, while Linux and macOS plugin bytes are preserved.
 

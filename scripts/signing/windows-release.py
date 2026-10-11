@@ -158,19 +158,19 @@ def prepare_ffi(root):
         raise ValueError('expected exactly one Windows FFI archive')
     staging = root / 'ffi-staging'
     extract(archives[0], staging)
-    libraries = list(staging.rglob('*.dll'))
+    libraries = sorted(staging.rglob('*.dll'))
     if not libraries:
         raise ValueError('Windows FFI archive contains no DLL')
-    for library in libraries:
-        output = root / 'unsigned-native/ffi' / library.relative_to(staging)
+    for index, library in enumerate(libraries):
+        output = root / 'unsigned-native' / f'ffi-{index}-{library.name}'
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(library, output)
 
 
 def repack_ffi(root):
     staging = root / 'ffi-staging'
-    for library in staging.rglob('*.dll'):
-        shutil.copy(root / 'signed-native/ffi' / library.relative_to(staging), library)
+    for index, library in enumerate(sorted(staging.rglob('*.dll'))):
+        shutil.copy(root / 'signed-native' / f'ffi-{index}-{library.name}', library)
     output = root / 'ffi-dist'
     output.mkdir(exist_ok=True)
     archive, = (root / 'original-ffi').glob('*.zip')
