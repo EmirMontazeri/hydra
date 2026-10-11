@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare and repack the v1.1.0 Windows release without editing signed packages."""
+"""Prepare and repack Windows releases without editing signed packages."""
 import argparse
 import pathlib
 import shutil
@@ -104,6 +104,7 @@ def stage_app(root, target):
     shutil.copy(root / 'source/scripts/windows/portable/HydraPortable.exe', output / 'HydraPortable.exe')
     shutil.copy(root / 'source/scripts/install-native-host.ps1', output / 'install-native-host.ps1')
     shutil.copy(root / 'source/uninstall.ps1', output / 'uninstall.ps1')
+    shutil.copy(root / 'source/scripts/windows/set-user-path.ps1', output / 'set-user-path.ps1')
     remote = output / 'remote-installers'
     remote.mkdir()
     for name in ('install.ps1', 'uninstall.ps1'):
@@ -115,17 +116,18 @@ def install_signed_app(root, target):
         shutil.copy(root / 'signed-app' / binary, root / 'source/target' / target / 'release' / binary)
     shutil.copy(root / 'signed-app/HydraPortable.exe', root / 'source/scripts/windows/portable/HydraPortable.exe')
     for name, destination in [('install-native-host.ps1', 'scripts/install-native-host.ps1'),
-                              ('uninstall.ps1', 'uninstall.ps1')]:
+                              ('uninstall.ps1', 'uninstall.ps1'),
+                              ('set-user-path.ps1', 'scripts/windows/set-user-path.ps1')]:
         shutil.copy(root / 'signed-app' / name, root / 'source' / destination)
 
 
-def repack_archives(root, architecture, target):
+def repack_archives(root, architecture, target, version="1.1.0"):
     arch = {'x86_64': 'amd64', 'aarch64': 'arm64'}[architecture]
     source = root / 'source'
     output = root / 'dist'
     output.mkdir(exist_ok=True)
     for prefix in ('hydra', 'hydra-cli', 'hydra-plugin-cli'):
-        name = f'{prefix}-1.1.0-windows-{arch}.zip'
+        name = f'{prefix}-{version}-windows-{arch}.zip'
         stage = root / 'archives' / prefix
         extract(root / 'original-windows' / name, stage)
         replacements = []
@@ -143,29 +145,76 @@ def repack_archives(root, architecture, target):
                 raise ValueError(f'unexpected PowerShell script: {script}')
             shutil.copy(signed, script)
         zip_directory(stage, output / name)
-    portable = source / 'target/dist' / f'hydra-1.1.0-windows-portable-{arch}.zip'
+    portable = source / 'target/dist' / f'hydra-{version}-windows-portable-{arch}.zip'
     shutil.copy(portable, output / portable.name)
     platform = f'windows-{architecture}'
     plugin = source / 'plugins/bundled/native' / platform / f'torrent-download-{platform}.hyaplugin'
     shutil.copy(plugin, output / plugin.name)
 
 
+def prepare_ffi(root):
+    archives = list((root / 'original-ffi').glob('*.zip'))
+    if len(archives) != 1:
+        raise ValueError('expected exactly one Windows FFI archive')
+    staging = root / 'ffi-staging'
+    extract(archives[0], staging)
+    libraries = list(staging.rglob('*.dll'))
+    if not libraries:
+        raise ValueError('Windows FFI archive contains no DLL')
+    for library in libraries:
+        output = root / 'unsigned-native/ffi' / library.relative_to(staging)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(library, output)
+
+
+def repack_ffi(root):
+    staging = root / 'ffi-staging'
+    for library in staging.rglob('*.dll'):
+        shutil.copy(root / 'signed-native/ffi' / library.relative_to(staging), library)
+    output = root / 'ffi-dist'
+    output.mkdir(exist_ok=True)
+    archive, = (root / 'original-ffi').glob('*.zip')
+    zip_directory(staging, output / archive.name)
+
+
+def refresh_bundle(root):
+    output = root / 'signed-plugins'
+    staging = root / 'bundle-staging'
+    archive = output / 'hydra-official-plugins.zip'
+    extract(archive, staging)
+    for architecture in ('x86_64', 'aarch64'):
+        platform = f'windows-{architecture}'
+        name = f'torrent-download-{platform}.hyaplugin'
+        signed = root / 'signed-windows' / name
+        shutil.copy(signed, staging / 'native' / platform / name)
+        shutil.copy(signed, output / 'native' / platform / name)
+    zip_directory(staging, archive)
+    for package in (root / 'native-packages').glob('*.hyaplugin'):
+        replacement = root / 'signed-windows' / package.name
+        shutil.copy(replacement if replacement.exists() else package, output / package.name)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['prepare-plugin', 'repack-plugin', 'export-uninstaller',
-                                          'import-uninstaller', 'stage-app', 'install-app', 'repack'])
+                                          'import-uninstaller', 'stage-app', 'install-app', 'repack',
+                                          'prepare-ffi', 'repack-ffi', 'refresh-bundle'])
     parser.add_argument('--architecture', choices=['x86_64', 'aarch64'], required=True)
+    parser.add_argument("--version", default="1.1.0")
     args = parser.parse_args()
     root = pathlib.Path.cwd()
     target = {'x86_64': 'x86_64-pc-windows-msvc', 'aarch64': 'aarch64-pc-windows-msvc'}[args.architecture]
     commands = {
+        'refresh-bundle': lambda: refresh_bundle(root),
+        'prepare-ffi': lambda: prepare_ffi(root),
+        'repack-ffi': lambda: repack_ffi(root),
         'prepare-plugin': lambda: prepare_plugin(root, args.architecture),
         'repack-plugin': lambda: repack_plugin(root, args.architecture),
         'export-uninstaller': lambda: installer_hook(root, 'export'),
         'import-uninstaller': lambda: installer_hook(root, 'import'),
         'stage-app': lambda: stage_app(root, target),
         'install-app': lambda: install_signed_app(root, target),
-        'repack': lambda: repack_archives(root, args.architecture, target),
+        'repack': lambda: repack_archives(root, args.architecture, target, args.version),
     }
     commands[args.command]()
 

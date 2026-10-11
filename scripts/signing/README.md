@@ -1,4 +1,56 @@
-# Windows v1.1.0 signing repair
+# Windows release signing
+
+`release.yml` calls the reusable `sign-windows.yml` after the build matrix and
+Windows FFI builds complete. Both AMD64 and ARM64 pass through signing before
+release upload. Unsigned inputs use `unsigned-` artifact names; publication
+selects only final artifacts. Standalone `hydra-torrent-native.dll` and
+`hydra-torrent-native.pdb` are excluded from release assets; the signed DLL stays
+inside its plugin package. Signing failure blocks publication.
+
+Set repository variable `SIGNPATH_TEST_SIGNING` to `true` (the default) for the
+test certificate, or `false` for production. The release exposes this value as
+the boolean environment variable `SIGNPATH_TEST_SIGNING` and passes it as a typed
+workflow input. Any other value fails. Test releases keep the normal filenames
+and include a notice in the release notes that Windows does not trust the test
+certificate.
+
+Both modes require repository secrets `SIGNPATH_API_TOKEN` and
+`HYDRA_PLUGIN_SIGNING_KEY`. Production also requires
+`SIGNPATH_RELEASE_SIGNING_ENABLED=true` and a production
+`SIGNPATH_CERTIFICATE_THUMBPRINT`, as described below. Production errors never
+fall back to test signing or unsigned files.
+
+Update the SignPath **hydra → hydra-files** artifact configuration to match
+[`artifact-configuration.xml`](artifact-configuration.xml) before running this
+pipeline: the rules now include every `.dll` and `.ps1`, including the FFI DLL
+and NSIS `set-user-path.ps1`, as well as `.exe` files. Keep trusted build origin
+verification enabled, and authorize the release workflow in SignPath if its
+policy requires a workflow allowlist. The submission uses the pinned official
+[SignPath action](https://github.com/SignPath/github-action-submit-signing-request).
+
+The torrent DLL is Authenticode signed, then its plugin checksums and publisher
+signature are regenerated. Applications are rebuilt from the same release SHA
+to embed that package. Applications, portable launcher, PowerShell scripts and
+exported uninstaller are signed before packaging; setup is signed last. FFI ZIPs
+preserve their own library version, static libraries, headers and documentation.
+The shared official bundle and individual Windows plugin assets are replaced
+together, while Linux and macOS plugin bytes are preserved.
+
+Final artifact names retain `hydra-windows-amd64`, `hydra-windows-arm64`,
+`libhydra-<target>` and `official-plugins`; installation scripts use
+`windows-installation-scripts`. Release filenames keep their original names
+without any `signed_` or `signed-` prefix, preserving existing download URLs.
+
+Signed root `install.ps1` and `uninstall.ps1` are attached as release assets.
+Repository/raw URLs continue to serve the committed scripts; signing does not
+commit them back to the repository.
+
+The historical `sign-windows-v1.1.0.yml` repair workflow is retained disabled
+for reference. It has no push trigger, and its preflight job always skips, so
+manual dispatch cannot perform signing. The instructions below describe its
+original operation only.
+
+## Windows v1.1.0 signing repair
 
 The workflow rebuilds Windows applications from the pinned v1.1.0 commit. It
 recovers the original torrent DLL from release run `37755183960`, checks it
