@@ -1,9 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
   <zip-file>
-    <pe-file-set>
-      <include path="**/*.exe" min-matches="1" max-matches="unbounded" />
-      <include path="**/*.dll" min-matches="0" max-matches="unbounded" />
+    <pe-file-set product-name="Hydra Download Manager" product-version="${version}">
+      <include path="hydra.exe" min-matches="0" max-matches="1" />
+      <include path="hydra-gui.exe" min-matches="0" max-matches="1" />
+      <include path="hydra-host.exe" min-matches="0" max-matches="1" />
+      <include path="hydra-updater.exe" min-matches="0" max-matches="1" />
+      <include path="hydra-plugin.exe" min-matches="0" max-matches="1" />
+      <include path="uninstall.exe" min-matches="0" max-matches="1" />
+      <include path="hydra-*-setup.exe" min-matches="0" max-matches="1" />
+      <include path="ffi-*-hydra.dll" min-matches="0" max-matches="unbounded" />
       <for-each>
         <authenticode-sign />
       </for-each>

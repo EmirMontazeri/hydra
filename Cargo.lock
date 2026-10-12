@@ -2215,6 +2215,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "crossterm",
+ "embed-resource",
  "hya-core",
  "hya-net",
  "hya-plugin",
@@ -2246,6 +2247,7 @@ name = "hya-ffi"
 version = "1.0.0"
 dependencies = [
  "blake3",
+ "embed-resource",
  "hya-core",
  "hya-net",
  "md-5",
@@ -2316,6 +2318,7 @@ dependencies = [
 name = "hya-host"
 version = "1.1.2"
 dependencies = [
+ "embed-resource",
  "serde_json",
 ]
 
@@ -2386,6 +2389,7 @@ dependencies = [
  "anyhow",
  "base64",
  "clap",
+ "embed-resource",
  "hya-plugin",
  "hya-plugin-api",
  "minisign",
@@ -2422,6 +2426,7 @@ version = "1.1.2"
 dependencies = [
  "blake3",
  "clap",
+ "embed-resource",
  "flate2",
  "hya-net",
  "serde",

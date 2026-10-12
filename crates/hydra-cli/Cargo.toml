@@ -51,3 +51,8 @@ workspace = true
 
 [dev-dependencies]
 wat = "1.261.0"
+
+[build-dependencies]
+# Windows VERSIONINFO via scripts/windows/version_resource.rs; build.rs is a
+# no-op for non-Windows targets.
+embed-resource = "3"

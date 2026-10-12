@@ -1,3 +1,6 @@
+#[path = "../../scripts/windows/version_resource.rs"]
+mod version_resource;
+
 use std::{env, fs, path::Path};
 fn collect(root: &Path, path: &Path, entries: &mut Vec<(String, String)>) {
     for item in fs::read_dir(path).unwrap() {
@@ -39,6 +42,13 @@ fn collect(root: &Path, path: &Path, entries: &mut Vec<(String, String)>) {
     }
 }
 fn main() {
+    version_resource::embed(&version_resource::Resource {
+        description: "Hydra plugin authoring tool",
+        original_filename: "hydra-plugin.exe",
+        internal_name: "hydra-plugin",
+        icon: false,
+        library: false,
+    });
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let staged = manifest.join("assets");
     let workspace = manifest.join("../..");
