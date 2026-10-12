@@ -1,5 +1,5 @@
 name: Sign and verify Windows files
-description: Submit loose Windows files to SignPath and verify the returned publisher and timestamp.
+description: Submit loose Windows files to SignPath and verify the returned publisher and timestamp. The calling job must export VERSION, the product version the artifact configuration restricts files to.
 inputs:
   artifact-name:
     description: Unique name for the unsigned GitHub artifact.
@@ -36,6 +36,8 @@ runs:
         project-slug: hydra
         signing-policy-slug: ${{ inputs.signing-policy }}
         artifact-configuration-slug: hydra-files
+        parameters: |
+          version: ${{ env.VERSION }}
         github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
         output-artifact-directory: ${{ inputs.signed-directory }}
         wait-for-completion: true

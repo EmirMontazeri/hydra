@@ -48,3 +48,8 @@ hya-net = { workspace = true }
 
 [lints]
 workspace = true
+
+[build-dependencies]
+# Windows VERSIONINFO via scripts/windows/version_resource.rs; build.rs is a
+# no-op for non-Windows targets.
+embed-resource = "3"

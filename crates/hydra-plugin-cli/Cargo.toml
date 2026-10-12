@@ -29,3 +29,8 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 wat = "1"
 [lints]
 workspace = true
+
+[build-dependencies]
+# Windows VERSIONINFO via scripts/windows/version_resource.rs; build.rs is a
+# no-op for non-Windows targets.
+embed-resource = "3"

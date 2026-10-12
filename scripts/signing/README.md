@@ -25,6 +25,15 @@ Signing requires repository secrets `SIGNPATH_API_TOKEN` and
 `SIGNPATH_CERTIFICATE_THUMBPRINT`, as described below. Production errors never
 fall back to test signing or unsigned files.
 
+SignPath Foundation restricts signing to one product name and version, so the
+configuration takes a required `version` parameter, which the composite action
+passes from the job's `VERSION`. Every executable and DLL Hydra builds embeds
+`ProductName` "Hydra Download Manager" and the workspace `ProductVersion`
+(`scripts/windows/version_resource.rs` for Rust; `VIAddVersionKey` in the NSIS
+installer). Third-party binaries (`hydra-torrent-native.dll`, which statically
+links libtorrent, and the PortableApps `HydraPortable.exe`) are deliberately
+not matched, so they pass through unsigned.
+
 Update the SignPath **hydra → hydra-files** artifact configuration to match
 [`artifact-configuration.xml`](artifact-configuration.xml) before running this
 pipeline: the rules now include every `.dll` and `.ps1`, including the FFI DLL
