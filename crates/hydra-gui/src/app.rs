@@ -4078,7 +4078,8 @@ impl App {
             crate::extbus::ExtEvent::Stream(s) => {
                 // Not the capture dialog: a manifest cannot be probed
                 // for a size or a name, so the entry is built from what
-                // the extension already read out of it and started.
+                // the extension already read out of it, then offered
+                // like any other new item.
                 crate::log::info(&format!("ext: stream capture for {}", s.url));
                 self.capture_raise = true;
                 let container = s.container.clone().unwrap_or_else(|| "MP4".into());
@@ -4126,7 +4127,7 @@ impl App {
                         max_seconds: None,
                     });
                 }
-                self.start_download(id, true)
+                self.offer_new_item(id, Task::none())
             }
             crate::extbus::ExtEvent::Links(urls) => {
                 self.capture_raise = true;
@@ -7895,10 +7896,14 @@ impl App {
     /// its own path — a redirector (`href.li/?<url>`) reads as `index.html`
     /// — so ask the network the question the transfer would have asked.
     fn file_info_prefetch(&mut self, id: DlId) -> Task<Message> {
+        // A manifest has no size or name to probe, and a background start
+        // would race the dialog for a download it is about to configure.
         if self.item(id).is_some_and(|item| {
-            item.plugin_plan
-                .as_ref()
-                .is_some_and(|info| info.plan.transfer.is_some())
+            item.stream.is_some()
+                || item
+                    .plugin_plan
+                    .as_ref()
+                    .is_some_and(|info| info.plan.transfer.is_some())
         }) {
             return Task::none();
         }
@@ -13644,6 +13649,42 @@ mod tests {
             .iter()
             .any(|d| d.url == "https://a.b/ontime.zip"
                 && !app.pending_delete.iter().any(|(id, _)| *id == d.id)));
+    }
+
+    fn captured_stream() -> crate::extbus::ExtStream {
+        serde_json::from_value(serde_json::json!({
+            "url": "https://a.b/live/master.m3u8",
+            "filename": "clip",
+            "container": "MP4",
+        }))
+        .expect("minimal stream capture")
+    }
+
+    #[test]
+    fn a_captured_stream_opens_the_file_info_dialog_when_enabled() {
+        let mut app = App::default();
+        app.cfg.settings.show_file_info_dialog = true;
+        let _ = app.update(Message::Ext(crate::extbus::ExtEvent::Stream(Box::new(
+            captured_stream(),
+        ))));
+        let item = app.state.downloads.last().expect("stream listed");
+        assert_eq!(item.file_name, "clip.mp4");
+        assert!(item.stream.is_some());
+        assert!(app.file_info.is_new && app.file_info.dl == item.id);
+        assert_eq!(app.file_info.file_name, "clip.mp4");
+        assert!(app.win_of(WinKind::FileInfo(item.id)).is_some());
+        assert!(!item.state.is_active(), "must wait for the dialog");
+    }
+
+    #[test]
+    fn a_captured_stream_skips_the_dialog_when_disabled() {
+        let mut app = App::default();
+        app.cfg.settings.show_file_info_dialog = false;
+        let _ = app.update(Message::Ext(crate::extbus::ExtEvent::Stream(Box::new(
+            captured_stream(),
+        ))));
+        let item = app.state.downloads.last().expect("stream listed");
+        assert!(app.win_of(WinKind::FileInfo(item.id)).is_none());
     }
 
     fn offer(has_bundle: bool) -> crate::update::UpdateInfo {
