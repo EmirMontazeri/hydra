@@ -63,6 +63,7 @@
 - [Embedding HYDRA — `libhydra`](#embedding-hydra--libhydra)
   - [Platform guides](#platform-guides)
 - [Contributing](#contributing)
+- [Code signing policy](#code-signing-policy)
 - [License](#license)
 
 ---
@@ -947,6 +948,24 @@ cargo test --all-targets --all-features
 ```
 
 Bug reports and feature requests go to the [issue tracker](https://github.com/ja7ad/hydra/issues); security vulnerabilities should be reported privately via [GitHub security advisories](https://github.com/ja7ad/hydra/security/advisories/new).
+
+---
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+Windows executables, DLLs, PowerShell scripts and installers in official Hydra releases are signed from the [ja7ad/hydra](https://github.com/ja7ad/hydra) repository's release workflow. Only binaries built from this repository's source are signed.
+
+**Team roles**
+
+- **Authors:** [committers and contributors](https://github.com/ja7ad/hydra/graphs/contributors)
+- **Reviewers:** [@ja7ad](https://github.com/ja7ad)
+- **Approvers:** [@ja7ad](https://github.com/ja7ad)
+
+**Privacy policy**
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. The only automatic request is the update check against GitHub releases, which you can turn off under **Options → General → Check for updates on startup**. See the full [privacy policy](https://hydra.javad.dev/privacy.html).
 
 ---
 
