@@ -544,7 +544,12 @@ async fn run_with_root(
         };
         let format = prefs.audio_format.as_deref().unwrap();
         let converted = scratch.path().join(format!("audio.{format}"));
+        let Some(ffmpeg) = hya_stream::hls::ffmpeg() else {
+            fail(format!("plugin {plugin}: audio extraction requires ffmpeg"));
+            return true;
+        };
         match hya_plugin::media::extract_audio(
+            &ffmpeg,
             std::path::Path::new(&audio.1),
             &converted,
             format,
