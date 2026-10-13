@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "חתימה",
   "Signed (verified)": "חתום (מאומת)",
-  "Publisher fingerprint (SHA-256)": "טביעת האצבע של המפרסם (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "טביעת האצבע של המפרסם (SHA-256)",
+  "Customize toolbar": "התאמה אישית של סרגל הכלים",
+  "First": "ראשון",
+  "Last": "אחרון",
+  "Toolbar buttons shown: {shown} of {max}": "כפתורי סרגל כלים מוצגים: {shown} מתוך {max}"
 }

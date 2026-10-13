@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Podpis",
   "Signed (verified)": "Podpisany (zweryfikowano)",
-  "Publisher fingerprint (SHA-256)": "Odcisk klucza wydawcy (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Odcisk klucza wydawcy (SHA-256)",
+  "Customize toolbar": "Dostosuj pasek narzędzi",
+  "First": "Pierwszy",
+  "Last": "Ostatni",
+  "Toolbar buttons shown: {shown} of {max}": "Wyświetlane przyciski paska: {shown} z {max}"
 }

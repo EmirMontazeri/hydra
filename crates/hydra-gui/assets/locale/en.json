@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Signature",
   "Signed (verified)": "Signed (verified)",
-  "Publisher fingerprint (SHA-256)": "Publisher fingerprint (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Publisher fingerprint (SHA-256)",
+  "Customize toolbar": "Customize toolbar",
+  "First": "First",
+  "Last": "Last",
+  "Toolbar buttons shown: {shown} of {max}": "Toolbar buttons shown: {shown} of {max}"
 }

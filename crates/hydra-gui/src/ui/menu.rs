@@ -215,6 +215,7 @@ pub fn entries(kind: MenuBarKind, app: &App) -> Vec<Entry> {
                 .check(!app.cfg.settings.show_categories),
             Entry::item(tr("Hide toolbar text"), MenuAction::HideToolbarText)
                 .check(!app.cfg.settings.show_toolbar_labels),
+            Entry::item(tr("Customize toolbar"), MenuAction::ManageToolbar),
             Entry::item(tr("Columns"), MenuAction::ManageColumns),
             Entry::sub(tr("Arrange Files"), arrange_entries(app)),
             Entry::sub(

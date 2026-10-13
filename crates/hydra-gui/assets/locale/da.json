@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Signatur",
   "Signed (verified)": "Signeret (verificeret)",
-  "Publisher fingerprint (SHA-256)": "Udgiverens fingeraftryk (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Udgiverens fingeraftryk (SHA-256)",
+  "Customize toolbar": "Tilpas værktøjslinjen",
+  "First": "Først",
+  "Last": "Sidst",
+  "Toolbar buttons shown: {shown} of {max}": "Knapper på værktøjslinjen: {shown} af {max}"
 }

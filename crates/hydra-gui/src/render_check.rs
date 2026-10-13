@@ -486,6 +486,55 @@ fn the_main_window_repaints_cleanly_across_hover_progress_and_scroll() {
 }
 
 #[test]
+fn the_toolbar_dialog_and_a_rearranged_toolbar_repaint_cleanly() {
+    use crate::model::{ToolbarItem, ToolbarMove};
+
+    let customized = || {
+        let mut app = app_with(6);
+        app.cfg.settings.theme_mode = Some(crate::model::ThemeMode::Dark);
+        let _ = app.update(crate::app::Message::ToolbarToggle(ToolbarItem::StopAll));
+        let _ = app.update(crate::app::Message::ToolbarToggle(ToolbarItem::Plugins));
+        let _ = app.update(crate::app::Message::ToolbarMove(
+            ToolbarItem::Plugins,
+            ToolbarMove::First,
+        ));
+        app
+    };
+
+    let mut dialog = Harness::new(
+        customized(),
+        WinKind::Toolbar,
+        Size::new(480.0, 520.0),
+        1.0,
+        true,
+    );
+    dialog.step("toolbar dialog", &[]);
+    dump(
+        "toolbar-dialog",
+        &dialog.shown,
+        &dialog.shown,
+        physical(dialog.logical, dialog.scale),
+    );
+    dialog.assert_clean("toolbar dialog");
+
+    let mut main = Harness::new(
+        customized(),
+        WinKind::Main,
+        Size::new(1100.0, 700.0),
+        1.0,
+        true,
+    );
+    main.step("rearranged toolbar", &[]);
+    dump(
+        "toolbar-main",
+        &main.shown,
+        &main.shown,
+        physical(main.logical, main.scale),
+    );
+    main.assert_clean("rearranged toolbar");
+}
+
+#[test]
 fn the_progress_window_repaints_cleanly_while_a_download_runs() {
     for scale in [1.0, 1.25, 1.5, 2.0] {
         let mut h = Harness::new(

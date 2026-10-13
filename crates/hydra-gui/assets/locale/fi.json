@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Allekirjoitus",
   "Signed (verified)": "Allekirjoitettu (vahvistettu)",
-  "Publisher fingerprint (SHA-256)": "Julkaisijan sormenjälki (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Julkaisijan sormenjälki (SHA-256)",
+  "Customize toolbar": "Mukauta työkalupalkkia",
+  "First": "Ensimmäiseksi",
+  "Last": "Viimeiseksi",
+  "Toolbar buttons shown: {shown} of {max}": "Työkalupalkin painikkeita näkyvissä: {shown} / {max}"
 }

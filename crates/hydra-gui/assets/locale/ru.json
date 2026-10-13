@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Подпись",
   "Signed (verified)": "Подписан (проверено)",
-  "Publisher fingerprint (SHA-256)": "Отпечаток издателя (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Отпечаток издателя (SHA-256)",
+  "Customize toolbar": "Настроить панель инструментов",
+  "First": "Первым",
+  "Last": "Последним",
+  "Toolbar buttons shown: {shown} of {max}": "Показано кнопок панели: {shown} из {max}"
 }

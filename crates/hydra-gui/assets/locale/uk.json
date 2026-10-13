@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Підпис",
   "Signed (verified)": "Підписано (перевірено)",
-  "Publisher fingerprint (SHA-256)": "Відбиток видавця (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Відбиток видавця (SHA-256)",
+  "Customize toolbar": "Налаштувати панель інструментів",
+  "First": "Першою",
+  "Last": "Останньою",
+  "Toolbar buttons shown: {shown} of {max}": "Показано кнопок панелі: {shown} з {max}"
 }

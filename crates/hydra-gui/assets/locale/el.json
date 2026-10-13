@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Υπογραφή",
   "Signed (verified)": "Υπογεγραμμένο (επαληθευμένο)",
-  "Publisher fingerprint (SHA-256)": "Αποτύπωμα εκδότη (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Αποτύπωμα εκδότη (SHA-256)",
+  "Customize toolbar": "Προσαρμογή γραμμής εργαλείων",
+  "First": "Πρώτο",
+  "Last": "Τελευταίο",
+  "Toolbar buttons shown: {shown} of {max}": "Κουμπιά γραμμής εργαλείων: {shown} από {max}"
 }

@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "ลายเซ็น",
   "Signed (verified)": "ลงลายเซ็นแล้ว (ตรวจสอบแล้ว)",
-  "Publisher fingerprint (SHA-256)": "ลายนิ้วมือผู้เผยแพร่ (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "ลายนิ้วมือผู้เผยแพร่ (SHA-256)",
+  "Customize toolbar": "ปรับแต่งแถบเครื่องมือ",
+  "First": "แรกสุด",
+  "Last": "ท้ายสุด",
+  "Toolbar buttons shown: {shown} of {max}": "ปุ่มแถบเครื่องมือที่แสดง: {shown} จาก {max}"
 }

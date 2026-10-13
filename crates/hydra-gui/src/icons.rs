@@ -299,6 +299,21 @@ pub fn extensions(enabled: bool) -> svg::Handle {
         .clone()
 }
 
+/// A mains plug: two prongs, a rounded body and the cable leaving it.
+pub fn plugins(enabled: bool) -> svg::Handle {
+    static C: OnceLock<[svg::Handle; 2]> = OnceLock::new();
+    C.get_or_init(|| {
+        let make = |enabled| gradient_icon(
+            r#"<path d="M13 5.5 v7 M19 5.5 v7"/><path d="M9.5 12.5 h13 v4.5 a6.5 6.5 0 0 1 -13 0 z"/><path d="M16 23.5 v3 a2.5 2.5 0 0 0 2.5 2.5 H22"/>"#,
+            "#38B6A0",
+            "#9A7FE8",
+            enabled,
+        );
+        [make(false), make(true)]
+    })[enabled as usize]
+        .clone()
+}
+
 // ------------------------------------------------------------ browser marks
 
 /// Vendor artwork, kept verbatim in `assets/brand/` rather than redrawn: the

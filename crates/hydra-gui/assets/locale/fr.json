@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Signature",
   "Signed (verified)": "Signé (vérifié)",
-  "Publisher fingerprint (SHA-256)": "Empreinte de l’éditeur (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Empreinte de l’éditeur (SHA-256)",
+  "Customize toolbar": "Personnaliser la barre d'outils",
+  "First": "Premier",
+  "Last": "Dernier",
+  "Toolbar buttons shown: {shown} of {max}": "Boutons de la barre affichés : {shown} sur {max}"
 }

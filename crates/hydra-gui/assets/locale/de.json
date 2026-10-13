@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Signatur",
   "Signed (verified)": "Signiert (verifiziert)",
-  "Publisher fingerprint (SHA-256)": "Fingerabdruck des Herausgebers (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Fingerabdruck des Herausgebers (SHA-256)",
+  "Customize toolbar": "Symbolleiste anpassen",
+  "First": "Erste",
+  "Last": "Letzte",
+  "Toolbar buttons shown: {shown} of {max}": "Angezeigte Symbolleistenschaltflächen: {shown} von {max}"
 }

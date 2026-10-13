@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "İmza",
   "Signed (verified)": "İmzalı (doğrulandı)",
-  "Publisher fingerprint (SHA-256)": "Yayıncı parmak izi (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Yayıncı parmak izi (SHA-256)",
+  "Customize toolbar": "Araç çubuğunu özelleştir",
+  "First": "İlk",
+  "Last": "Son",
+  "Toolbar buttons shown: {shown} of {max}": "Gösterilen araç çubuğu düğmeleri: {shown} / {max}"
 }

@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "امضا",
   "Signed (verified)": "امضاشده (تأییدشده)",
-  "Publisher fingerprint (SHA-256)": "اثر انگشت ناشر (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "اثر انگشت ناشر (SHA-256)",
+  "Customize toolbar": "سفارشی‌سازی نوار ابزار",
+  "First": "اول",
+  "Last": "آخر",
+  "Toolbar buttons shown: {shown} of {max}": "دکمه‌های نمایش‌داده‌شده نوار ابزار: {shown} از {max}"
 }
