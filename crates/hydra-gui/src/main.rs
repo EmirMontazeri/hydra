@@ -48,6 +48,7 @@ mod theme;
 mod tray;
 mod ui;
 mod update;
+mod window_close;
 mod windows;
 
 use app::{App, Message, WinKind};

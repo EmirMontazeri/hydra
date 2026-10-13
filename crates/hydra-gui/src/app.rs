@@ -3002,7 +3002,7 @@ impl App {
         }
         if let Some(id) = self.win_of(kind) {
             self.windows.remove(&id);
-            window::close(id)
+            crate::window_close::close(id)
         } else {
             Task::none()
         }
@@ -3074,7 +3074,7 @@ impl App {
         let mut tasks = Vec::with_capacity(ids.len());
         for id in ids {
             self.windows.remove(&id);
-            tasks.push(window::close(id));
+            tasks.push(crate::window_close::close(id));
         }
         Task::batch(tasks)
     }
@@ -5372,7 +5372,7 @@ impl App {
             Message::Noop => Task::none(),
             Message::WindowOpened(id) => {
                 if self.window_is_orphan(id) {
-                    return window::close(id);
+                    return crate::window_close::close(id);
                 }
                 #[cfg(target_os = "macos")]
                 let pin_surface = iced::window::run(id, |w| {
@@ -5520,7 +5520,7 @@ impl App {
                 // Always honour it, tracked or not: a window we have lost
                 // track of must still be closable by its own close button.
                 // Bookkeeping happens in WindowClosed once it's gone.
-                window::close(id)
+                crate::window_close::close(id)
             }
             // Window geometry reaches us divided by the View > Scale
             // factor, because that is the space the interface is laid out
@@ -6633,7 +6633,7 @@ impl App {
                 }
                 if let Some(win) = self.win_of(WinKind::Progress(id)) {
                     self.windows.remove(&win);
-                    window::close(win)
+                    crate::window_close::close(win)
                 } else {
                     Task::none()
                 }
@@ -7842,7 +7842,7 @@ impl App {
                 match self.windows.remove(&id) {
                     Some(WinKind::Confirm) => {
                         let next = self.next_confirm();
-                        return Task::batch([window::close(id), next]);
+                        return Task::batch([crate::window_close::close(id), next]);
                     }
                     Some(WinKind::AddUrl) => {
                         if let Some(ctl) = &self.add_url.plugin_ctl {
@@ -7857,17 +7857,20 @@ impl App {
                     // cannot: the entry is gone from `windows` by then.
                     Some(WinKind::Power) => {
                         let cancelled = self.cancel_power_action();
-                        return Task::batch([cancelled, window::close(id)]);
+                        return Task::batch([cancelled, crate::window_close::close(id)]);
                     }
                     // Back to the dialog the listing was opened from.
                     Some(WinKind::ZipPreview(dl)) => {
                         if let Some(fi) = self.win_of(WinKind::FileInfo(dl)) {
-                            return Task::batch([window::close(id), window::gain_focus(fi)]);
+                            return Task::batch([
+                                crate::window_close::close(id),
+                                window::gain_focus(fi),
+                            ]);
                         }
                     }
                     _ => {}
                 }
-                window::close(id)
+                crate::window_close::close(id)
             }
         }
     }
