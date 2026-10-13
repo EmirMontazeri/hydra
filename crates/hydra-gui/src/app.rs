@@ -4026,6 +4026,7 @@ impl App {
                 d.resume = Some(true);
             }
             d.plugin_plan = Some(info);
+            d.name_locked = true;
         }
     }
 
@@ -7910,6 +7911,12 @@ impl App {
         if self.cfg.settings.bg_download && self.auto_start_type(id) {
             return self.start_download(id, false);
         }
+        // The address is a page the plugin resolves, not the file: probing it
+        // follows redirects (YouTube's `/supported_browsers`) and reports the
+        // landing page's name and size.
+        if self.item(id).is_some_and(|item| item.plugin_plan.is_some()) {
+            return Task::none();
+        }
         let ua = self.cfg.settings.user_agent.clone();
         // The item's own route, not the app's: a capture that arrived with
         // the browser's proxy is reachable through that proxy and nowhere
@@ -11651,6 +11658,56 @@ mod tests {
             app.batch.names.get(url).map(String::as_str),
             Some("clip.mp4")
         );
+    }
+
+    #[test]
+    fn a_probe_of_a_resolved_page_cannot_rename_the_plugin_download() {
+        let mut app = App::default();
+        let url = "https://www.youtube.com/watch?v=example";
+        let id = app.add_item(url.into(), None, None);
+        let info = crate::plugins::PlanInfo {
+            plugin: "hydra.youtube".into(),
+            plan: hya_plugin_api::Plan::single(
+                "Some Song",
+                hya_plugin_api::Track::file("a", "https://cdn.example.com/a"),
+            ),
+            preferences: hya_plugin_api::Preferences {
+                audio_only: true,
+                audio_format: Some("mp3".into()),
+                ..Default::default()
+            },
+        };
+        app.name_new_item(id, crate::plugins::file_name(&info));
+        app.apply_plugin_plan(id, info);
+        assert_eq!(app.item(id).unwrap().file_name, "Some Song.mp3");
+
+        let landing = engine::LinkMeta {
+            size: Some(1),
+            file_name: Some("supported_browsers".into()),
+            is_metalink: false,
+        };
+        let _ = app.update(Message::InfoProbed(id, Some(landing)));
+        assert_eq!(app.item(id).unwrap().file_name, "Some Song.mp3");
+    }
+
+    #[test]
+    fn the_file_info_dialog_does_not_probe_a_plugin_resolved_page() {
+        let mut app = App::default();
+        app.cfg.settings.bg_download = false;
+        let id = app.add_item("https://www.youtube.com/watch?v=example".into(), None, None);
+        let info = crate::plugins::PlanInfo {
+            plugin: "hydra.youtube".into(),
+            plan: hya_plugin_api::Plan::single(
+                "Some Song",
+                hya_plugin_api::Track::file("a", "https://cdn.example.com/a"),
+            ),
+            preferences: Default::default(),
+        };
+        app.apply_plugin_plan(id, info);
+        assert!(app.file_info_prefetch(id).units() == 0);
+
+        let plain = app.add_item("https://example.com/a.zip".into(), None, None);
+        assert!(app.file_info_prefetch(plain).units() > 0);
     }
 
     #[test]
