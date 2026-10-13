@@ -231,8 +231,15 @@ pub async fn run(
             .ok_or("no audio track is available for extraction")?;
         let format = prefs.audio_format.as_deref().unwrap();
         let converted = scratch.path().join(format!("audio.{format}"));
-        hya_plugin::media::extract_audio(&audio.1, &converted, format, template.cancel.clone())
-            .await?;
+        let ffmpeg = hya_stream::hls::ffmpeg().ok_or("audio extraction requires ffmpeg")?;
+        hya_plugin::media::extract_audio(
+            &ffmpeg,
+            &audio.1,
+            &converted,
+            format,
+            template.cancel.clone(),
+        )
+        .await?;
         publish(&converted, &output, template.force)?;
     }
     for (kind, staged, destination) in media {

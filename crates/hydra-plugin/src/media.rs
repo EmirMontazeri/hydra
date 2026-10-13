@@ -9,6 +9,7 @@ use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 /// # Errors
 /// Returns an error for unsupported formats, missing ffmpeg, failed conversion or cancellation.
 pub async fn extract_audio(
+    ffmpeg: &Path,
     input: &Path,
     output: &Path,
     format: &str,
@@ -28,7 +29,7 @@ pub async fn extract_audio(
     {
         return Err("audio extraction cancelled".into());
     }
-    let mut command = tokio::process::Command::new("ffmpeg");
+    let mut command = tokio::process::Command::new(ffmpeg);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
     let child = command
@@ -69,6 +70,7 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(true));
         assert_eq!(
             extract_audio(
+                Path::new("ffmpeg"),
                 Path::new("missing"),
                 Path::new("out.mp3"),
                 "mp3",
@@ -108,10 +110,13 @@ mod tests {
         std::fs::write(&input, wav).unwrap();
         for format in ["mp3", "m4a", "opus", "flac", "wav"] {
             let output = root.path().join(format!("converted.{format}"));
-            extract_audio(&input, &output, format, None).await.unwrap();
+            extract_audio(Path::new("ffmpeg"), &input, &output, format, None)
+                .await
+                .unwrap();
             assert!(std::fs::metadata(output).unwrap().len() > 0);
         }
         assert!(extract_audio(
+            Path::new("ffmpeg"),
             &root.path().join("missing"),
             &root.path().join("out.mp3"),
             "mp3",
@@ -124,11 +129,48 @@ mod tests {
 
     #[tokio::test]
     async fn unsupported_formats_are_refused_before_starting_a_tool() {
-        assert!(
-            extract_audio(Path::new("missing"), Path::new("out"), "invalid", None)
-                .await
-                .unwrap_err()
-                .contains("unsupported audio format")
-        );
+        assert!(extract_audio(
+            Path::new("ffmpeg"),
+            Path::new("missing"),
+            Path::new("out"),
+            "invalid",
+            None,
+        )
+        .await
+        .unwrap_err()
+        .contains("unsupported audio format"));
+    }
+
+    #[tokio::test]
+    async fn missing_ffmpeg_binary_is_reported_with_its_path() {
+        let error = extract_audio(
+            Path::new("/nonexistent/ffmpeg"),
+            Path::new("in.wav"),
+            Path::new("out.mp3"),
+            "mp3",
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.starts_with("audio extraction requires ffmpeg"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn uses_the_given_binary_instead_of_searching_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let fake = root.path().join("fake-ffmpeg");
+        std::fs::write(
+            &fake,
+            "#!/bin/sh\nfor last; do :; done\necho ok > \"$last\"\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let output = root.path().join("out.mp3");
+        extract_audio(&fake, Path::new("in.wav"), &output, "mp3", None)
+            .await
+            .unwrap();
+        assert!(output.exists());
     }
 }
