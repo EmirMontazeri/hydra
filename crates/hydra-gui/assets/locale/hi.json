@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "हस्ताक्षर",
   "Signed (verified)": "हस्ताक्षरित (सत्यापित)",
-  "Publisher fingerprint (SHA-256)": "प्रकाशक का फ़िंगरप्रिंट (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "प्रकाशक का फ़िंगरप्रिंट (SHA-256)",
+  "Customize toolbar": "टूलबार कस्टमाइज़ करें",
+  "First": "पहला",
+  "Last": "अंतिम",
+  "Toolbar buttons shown: {shown} of {max}": "दिखाए गए टूलबार बटन: {max} में से {shown}"
 }

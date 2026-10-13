@@ -5,7 +5,7 @@
 //! View > Hide toolbar text is on — then the label becomes a hover tooltip.
 
 use crate::app::{App, El, MenuAction, Message};
-use crate::model::DlState;
+use crate::model::{DlState, ToolbarItem, TOOLBAR_MAX_VISIBLE};
 use crate::{i18n::tr, icons, theme};
 use iced::widget::{button, column, container, row, svg, text, tooltip};
 use iced::{Alignment, Length};
@@ -18,40 +18,33 @@ const TOOL_PAD_X: f32 = 10.0;
 const GAP: f32 = 4.0;
 const ARROW_W: f32 = 14.0;
 const ROW_PAD_X: f32 = 8.0;
-/// The three split buttons: Start Queue, Stop Queue, Speed Limit.
-const ARROWS: usize = 3;
 
-/// Every label the row draws, widest form (a Speed Limiter with a cap set
-/// shows the cap, which is shorter than its name). `min_width` measures
-/// these and a test holds the list to what `view` actually draws.
-const TOOL_LABELS: [&str; 12] = [
-    "Add URL",
-    "Resume",
-    "Stop",
-    "Stop All",
-    "Delete",
-    "Delete Completed",
-    "Options",
-    "Extensions",
-    "Scheduler",
-    "Start Queue",
-    "Stop Queue",
-    "Speed Limit",
-];
+/// What one button takes in this locale: its label, any dropdown arrow, and
+/// the gap before that arrow.
+fn item_width(item: ToolbarItem) -> f32 {
+    let tool =
+        crate::font::line_width(&tr(item.label()), theme::FONT_SIZE).max(ICON_W) + 2.0 * TOOL_PAD_X;
+    if item.is_split() {
+        tool + GAP + ARROW_W
+    } else {
+        tool
+    }
+}
 
 /// The width the toolbar needs in this locale, labels and all.
 ///
 /// The row does not wrap or scroll: past the right edge iced squeezes the
 /// last tools to nothing and draws their labels over each other. The
 /// window's floor comes from here rather than from a number measured once
-/// against English, which every longer translation then overran.
+/// against English, which every longer translation then overran. Which
+/// buttons are shown is the user's choice, so the floor covers the widest
+/// [`TOOLBAR_MAX_VISIBLE`] of them.
 pub fn min_width() -> f32 {
-    let tools: f32 = TOOL_LABELS
-        .iter()
-        .map(|l| crate::font::line_width(&tr(l), theme::FONT_SIZE).max(ICON_W) + 2.0 * TOOL_PAD_X)
-        .sum();
-    let n = TOOL_LABELS.len() + ARROWS;
-    tools + ARROWS as f32 * ARROW_W + (n - 1) as f32 * GAP + 2.0 * ROW_PAD_X
+    let mut widths: Vec<f32> = ToolbarItem::ALL.into_iter().map(item_width).collect();
+    widths.sort_by(|a, b| b.total_cmp(a));
+    widths.truncate(TOOLBAR_MAX_VISIBLE);
+    let gaps = widths.len().saturating_sub(1) as f32 * GAP;
+    widths.iter().sum::<f32>() + gaps + 2.0 * ROW_PAD_X
 }
 
 fn tool<'a>(icon: svg::Handle, label: String, msg: Option<Message>, labels: bool) -> El<'a> {
@@ -127,141 +120,172 @@ pub fn view(app: &App) -> El<'_> {
         .map(|q| q.name.clone())
         .unwrap_or_else(|| "Main download queue".into());
 
-    row![
-        tool(
-            icons::add_url(true),
-            tr("Add URL"),
-            Some(Message::Menu(MenuAction::AddNewDownload)),
-            labels,
-        ),
-        tool(
-            icons::resume(sel_resumable),
-            tr("Resume"),
-            sel_resumable.then_some(Message::ToolbarResume),
-            labels,
-        ),
-        tool(
-            icons::stop(sel_active),
-            tr("Stop"),
-            sel_active.then_some(Message::ToolbarStop),
-            labels,
-        ),
-        tool(
-            icons::stop_all(any_active),
-            tr("Stop All"),
-            any_active.then_some(Message::Menu(MenuAction::StopAll)),
-            labels,
-        ),
-        tool(
-            icons::delete(sel_some),
-            tr("Delete"),
-            sel_some.then_some(Message::ToolbarDelete),
-            labels,
-        ),
-        tool(
-            icons::delete_completed(true),
-            tr("Delete Completed"),
-            Some(Message::Menu(MenuAction::DeleteAllCompleted)),
-            labels,
-        ),
-        tool(
-            icons::options(true),
-            tr("Options"),
-            Some(Message::Menu(MenuAction::Options)),
-            labels,
-        ),
-        // Shortcut into Options > Extensions: the browser add-on is how most
-        // downloads reach Hydra, so it gets a toolbar entry of its own.
-        tool(
-            icons::extensions(true),
-            tr("Extensions"),
-            Some(Message::Menu(MenuAction::Extensions)),
-            labels,
-        ),
-        tool(
-            icons::scheduler(true),
-            tr("Scheduler"),
-            Some(Message::Menu(MenuAction::Scheduler)),
-            labels,
-        ),
-        // Split buttons: the big button acts on the MAIN queue,
-        // the arrow opens the list of all queues.
-        tool(
-            icons::start_queue(!any_queue_running),
-            tr("Start Queue"),
-            (!any_queue_running).then_some(Message::Menu(MenuAction::StartQueue(main_q.clone()))),
-            labels,
-        ),
-        button(text("▾").size(theme::FONT_SIZE))
-            .padding([4, 3])
-            .style(theme::btn_toolbar)
-            .on_press(Message::QueueMenuOpen(true)),
-        tool(
-            icons::stop_queue(any_queue_running),
-            tr("Stop Queue"),
-            any_queue_running.then_some(Message::Menu(MenuAction::StopQueue(main_q))),
-            labels,
-        ),
-        button(text("▾").size(theme::FONT_SIZE))
-            .padding([4, 3])
-            .style(theme::btn_toolbar)
-            .on_press(Message::QueueMenuOpen(false)),
-        // Speed Limiter, one click from the queue it is throttling: the big
-        // button switches the cap on and off, the arrow picks a profile.
-        tool(
-            icons::speed_limit(limit.is_some()),
-            speed_label(limit, labels),
-            Some(Message::Menu(MenuAction::SpeedLimiterToggle)),
-            labels,
-        ),
-        button(text("▾").size(theme::FONT_SIZE))
-            .padding([4, 3])
-            .style(theme::btn_toolbar)
-            .on_press(Message::SpeedMenuOpen),
-    ]
-    .spacing(GAP)
-    .padding([4.0, ROW_PAD_X])
-    .width(Length::Fill)
-    .into()
+    let mut bar = row![]
+        .spacing(GAP)
+        .padding([4.0, ROW_PAD_X])
+        .width(Length::Fill);
+    for pref in app.cfg.settings.toolbar.iter().filter(|p| p.visible) {
+        let item = pref.id;
+        let name = tr(item.label());
+        let (tool_el, arrow) = match item {
+            ToolbarItem::AddUrl => (
+                tool(
+                    icons::add_url(true),
+                    name,
+                    Some(Message::Menu(MenuAction::AddNewDownload)),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::Resume => (
+                tool(
+                    icons::resume(sel_resumable),
+                    name,
+                    sel_resumable.then_some(Message::ToolbarResume),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::Stop => (
+                tool(
+                    icons::stop(sel_active),
+                    name,
+                    sel_active.then_some(Message::ToolbarStop),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::StopAll => (
+                tool(
+                    icons::stop_all(any_active),
+                    name,
+                    any_active.then_some(Message::Menu(MenuAction::StopAll)),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::Delete => (
+                tool(
+                    icons::delete(sel_some),
+                    name,
+                    sel_some.then_some(Message::ToolbarDelete),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::DeleteCompleted => (
+                tool(
+                    icons::delete_completed(true),
+                    name,
+                    Some(Message::Menu(MenuAction::DeleteAllCompleted)),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::Options => (
+                tool(
+                    icons::options(true),
+                    name,
+                    Some(Message::Menu(MenuAction::Options)),
+                    labels,
+                ),
+                None,
+            ),
+            // Shortcuts into Options: the browser add-on is how most
+            // downloads reach Hydra, and plugins are what teach it new sites.
+            ToolbarItem::Extensions => (
+                tool(
+                    icons::extensions(true),
+                    name,
+                    Some(Message::Menu(MenuAction::Extensions)),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::Plugins => (
+                tool(
+                    icons::plugins(true),
+                    name,
+                    Some(Message::Menu(MenuAction::Plugins)),
+                    labels,
+                ),
+                None,
+            ),
+            ToolbarItem::Scheduler => (
+                tool(
+                    icons::scheduler(true),
+                    name,
+                    Some(Message::Menu(MenuAction::Scheduler)),
+                    labels,
+                ),
+                None,
+            ),
+            // Split buttons: the big button acts on the MAIN queue,
+            // the arrow opens the list of all queues.
+            ToolbarItem::StartQueue => (
+                tool(
+                    icons::start_queue(!any_queue_running),
+                    name,
+                    (!any_queue_running)
+                        .then_some(Message::Menu(MenuAction::StartQueue(main_q.clone()))),
+                    labels,
+                ),
+                Some(Message::QueueMenuOpen(true)),
+            ),
+            ToolbarItem::StopQueue => (
+                tool(
+                    icons::stop_queue(any_queue_running),
+                    name,
+                    any_queue_running
+                        .then_some(Message::Menu(MenuAction::StopQueue(main_q.clone()))),
+                    labels,
+                ),
+                Some(Message::QueueMenuOpen(false)),
+            ),
+            // Speed Limiter, one click from the queue it is throttling: the
+            // big button switches the cap on and off, the arrow picks a profile.
+            ToolbarItem::SpeedLimit => (
+                tool(
+                    icons::speed_limit(limit.is_some()),
+                    speed_label(limit, labels),
+                    Some(Message::Menu(MenuAction::SpeedLimiterToggle)),
+                    labels,
+                ),
+                Some(Message::SpeedMenuOpen),
+            ),
+        };
+        bar = bar.push(tool_el);
+        if let Some(open) = arrow {
+            bar = bar.push(
+                button(text("▾").size(theme::FONT_SIZE))
+                    .padding([4, 3])
+                    .style(theme::btn_toolbar)
+                    .on_press(open),
+            );
+        }
+    }
+    bar.into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Every label `view` draws, read off this file: a tool added without
-    /// its label in [`TOOL_LABELS`] would leave the window's floor too
-    /// narrow for the row, which is the bug this list exists to prevent.
-    fn labels_drawn() -> std::collections::BTreeSet<String> {
-        let src = include_str!("toolbar.rs");
-        let call = ["tr", "(", "\""].concat();
-        src.match_indices(&call)
-            .filter_map(|(i, _)| {
-                let rest = &src[i + call.len()..];
-                rest.find('"').map(|end| rest[..end].to_string())
-            })
-            .collect()
-    }
-
     #[test]
-    fn the_window_floor_measures_every_label_the_row_draws() {
-        let measured: std::collections::BTreeSet<String> =
-            TOOL_LABELS.iter().map(|l| l.to_string()).collect();
-        assert_eq!(labels_drawn(), measured);
-    }
-
-    #[test]
-    fn the_row_asks_for_at_least_what_its_tools_take() {
-        // The floor has to cover the labels and the chrome around them, or
-        // the last tools are squeezed to nothing and drawn over each other.
-        let tools: f32 = TOOL_LABELS
-            .iter()
-            .map(|l| crate::font::line_width(&tr(l), theme::FONT_SIZE).max(ICON_W))
-            .sum();
-        assert!(min_width() > tools, "no room for the chrome around them");
+    fn the_row_asks_for_at_least_what_its_widest_buttons_take() {
+        let mut widths: Vec<f32> = ToolbarItem::ALL.into_iter().map(item_width).collect();
+        widths.sort_by(|a, b| b.total_cmp(a));
+        let widest: f32 = widths[..TOOLBAR_MAX_VISIBLE].iter().sum();
+        assert!(min_width() > widest, "no room for the chrome around them");
         // And the window keeps the floor it has always had, so a locale
         // that never overran it sees no change.
         assert!(crate::app::main_min_w() >= 1050.0);
+    }
+
+    #[test]
+    fn a_split_button_is_wider_than_its_label_by_the_arrow() {
+        let plain = item_width(ToolbarItem::Stop);
+        assert!(item_width(ToolbarItem::StopQueue) > plain + ARROW_W);
     }
 
     #[test]

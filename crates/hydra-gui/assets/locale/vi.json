@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Chữ ký",
   "Signed (verified)": "Đã ký (đã xác minh)",
-  "Publisher fingerprint (SHA-256)": "Dấu vân tay nhà phát hành (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Dấu vân tay nhà phát hành (SHA-256)",
+  "Customize toolbar": "Tùy chỉnh thanh công cụ",
+  "First": "Đầu",
+  "Last": "Cuối",
+  "Toolbar buttons shown: {shown} of {max}": "Nút thanh công cụ đang hiện: {shown}/{max}"
 }

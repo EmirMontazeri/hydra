@@ -204,6 +204,7 @@ pub fn reinstall(
         !state.show_toolbar_labels,
     );
     let _ = view.append(&hide_toolbar_text);
+    let _ = view.append(&item("Customize toolbar", MenuAction::ManageToolbar));
     let _ = view.append(&item("Columns", MenuAction::ManageColumns));
     let arrange = Submenu::new(tr("Arrange Files"), true);
     let mut sort_items = Vec::new();

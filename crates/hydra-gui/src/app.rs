@@ -45,6 +45,8 @@ pub enum WinKind {
     Shortcuts,
     /// Which columns the download table shows, in what order.
     Columns,
+    /// Which toolbar buttons show, in what order.
+    Toolbar,
     Update,
     /// The cancellable countdown shown before a "when done" power action.
     Power,
@@ -106,10 +108,14 @@ pub enum MenuAction {
     Options,
     /// Options, opened straight on the Extensions page (toolbar shortcut).
     Extensions,
+    /// Options, opened straight on the Plugins page (toolbar shortcut).
+    Plugins,
     HideCategories,
     /// View > Hide toolbar text: toolbar icons keep their labels or trade
     /// them for hover tooltips.
     HideToolbarText,
+    /// View > Customize toolbar: which buttons show, and in what order.
+    ManageToolbar,
     ArrangeBy(SortKey),
     /// Set ascending (`true`) or descending (`false`) sort direction.
     SortDirection(bool),
@@ -180,8 +186,10 @@ impl MenuAction {
             MenuAction::SpeedLimitSettings => "speed_limit_settings".into(),
             MenuAction::Options => "options".into(),
             MenuAction::Extensions => "extensions".into(),
+            MenuAction::Plugins => "plugins".into(),
             MenuAction::HideCategories => "hide_cats".into(),
             MenuAction::HideToolbarText => "hide_toolbar_text".into(),
+            MenuAction::ManageToolbar => "toolbar".into(),
             MenuAction::ArrangeBy(k) => format!("arrange:{}", k.id()),
             MenuAction::SortDirection(asc) => {
                 if *asc {
@@ -290,8 +298,10 @@ impl MenuAction {
             "speed_limit_settings" => MenuAction::SpeedLimitSettings,
             "options" => MenuAction::Options,
             "extensions" => MenuAction::Extensions,
+            "plugins" => MenuAction::Plugins,
             "hide_cats" => MenuAction::HideCategories,
             "hide_toolbar_text" => MenuAction::HideToolbarText,
+            "toolbar" => MenuAction::ManageToolbar,
             "columns" => MenuAction::ManageColumns,
             "homepage" => MenuAction::HomePage,
             "contribute" => MenuAction::Contribute,
@@ -1362,6 +1372,9 @@ pub enum Message {
     ColMove(Column, bool),
     /// Put the table's columns back to the stock order, widths and visibility.
     ColReset,
+    ToolbarToggle(model::ToolbarItem),
+    ToolbarMove(model::ToolbarItem, model::ToolbarMove),
+    ToolbarReset,
     ToolbarResume,
     ToolbarStop,
     ToolbarDelete,
@@ -2840,6 +2853,7 @@ impl App {
             WinKind::About => (460.0, 225.0),
             WinKind::Shortcuts => (520.0, 520.0),
             WinKind::Columns => (420.0, 400.0),
+            WinKind::Toolbar => (480.0, 520.0),
             WinKind::Confirm => (500.0, 200.0),
             WinKind::Permissions => (640.0, 410.0),
             WinKind::Update => (560.0, 520.0),
@@ -6103,6 +6117,23 @@ impl App {
                 self.save_config();
                 Task::none()
             }
+            Message::ToolbarToggle(item) => {
+                if model::toggle_toolbar_item(&mut self.cfg.settings.toolbar, item) {
+                    self.save_config();
+                }
+                Task::none()
+            }
+            Message::ToolbarMove(item, to) => {
+                if model::move_toolbar_item(&mut self.cfg.settings.toolbar, item, to) {
+                    self.save_config();
+                }
+                Task::none()
+            }
+            Message::ToolbarReset => {
+                self.cfg.settings.toolbar = model::default_toolbar();
+                self.save_config();
+                Task::none()
+            }
             Message::QueueMenuOpen(start) => {
                 self.queue_menu = Some(start);
                 self.ctx_at = Some(self.cursor_now());
@@ -8187,6 +8218,7 @@ impl App {
             MenuAction::SpeedLimitSettings => self.open_options(Some(OptTab::SpeedLimit)),
             MenuAction::Options => self.open_options(None),
             MenuAction::Extensions => self.open_options(Some(OptTab::Extensions)),
+            MenuAction::Plugins => self.open_options(Some(OptTab::Plugins)),
             MenuAction::CheckUpdates => {
                 // A known offer just reopens its dialog; otherwise run a
                 // fresh check in manual mode so the result is always shown.
@@ -8214,6 +8246,7 @@ impl App {
             MenuAction::ArrangeBy(key) => self.update(Message::SortBy(key)),
             MenuAction::SortDirection(asc) => self.update(Message::SortDirection(asc)),
             MenuAction::ManageColumns => self.open_window(WinKind::Columns),
+            MenuAction::ManageToolbar => self.open_window(WinKind::Toolbar),
             MenuAction::ToggleColumn(col) => self.update(Message::ColToggle(col)),
             MenuAction::MoveColumn(col, left) => {
                 // From the header, where only shown columns are next to each
@@ -9408,6 +9441,7 @@ fn dialog_primary(app: &App, kind: WinKind, id: window::Id) -> Option<Message> {
         WinKind::About
         | WinKind::Shortcuts
         | WinKind::Columns
+        | WinKind::Toolbar
         | WinKind::Permissions
         | WinKind::ZipPreview(_) => Message::CloseThis(id),
     })
@@ -9819,6 +9853,56 @@ mod tests {
             MenuAction::from_id(&MenuAction::HideToolbarText.id()),
             Some(MenuAction::HideToolbarText)
         );
+    }
+
+    #[test]
+    fn the_toolbar_entries_come_back_from_their_menu_ids() {
+        for action in [MenuAction::ManageToolbar, MenuAction::Plugins] {
+            assert_eq!(MenuAction::from_id(&action.id()), Some(action));
+        }
+    }
+
+    #[test]
+    fn view_offers_the_toolbar_customizer() {
+        let app = App::default();
+        assert!(crate::ui::menu::entries(MenuBarKind::View, &app)
+            .iter()
+            .any(|e| e.action == Some(MenuAction::ManageToolbar)));
+    }
+
+    #[test]
+    fn toolbar_edits_apply_at_once_and_are_kept_for_the_next_launch() {
+        let mut app = App::default();
+        let _ = app.update(Message::ToolbarMove(
+            model::ToolbarItem::Scheduler,
+            model::ToolbarMove::First,
+        ));
+        assert_eq!(
+            app.cfg.settings.toolbar[0].id,
+            model::ToolbarItem::Scheduler
+        );
+        assert!(app.cfg_dirty);
+
+        app.cfg_dirty = false;
+        let _ = app.update(Message::ToolbarToggle(model::ToolbarItem::Plugins));
+        assert!(
+            !app.cfg_dirty,
+            "the full toolbar refuses a thirteenth button"
+        );
+
+        let _ = app.update(Message::ToolbarToggle(model::ToolbarItem::Stop));
+        let _ = app.update(Message::ToolbarToggle(model::ToolbarItem::Plugins));
+        assert!(app.cfg_dirty);
+
+        let _ = app.update(Message::ToolbarReset);
+        assert_eq!(app.cfg.settings.toolbar, model::default_toolbar());
+    }
+
+    #[test]
+    fn the_plugins_button_opens_options_on_the_plugins_page() {
+        let mut app = App::default();
+        let _ = app.update(Message::Menu(MenuAction::Plugins));
+        assert_eq!(app.options.tab, OptTab::Plugins);
     }
 
     /// The View entry is a checkbox over a setting, not a counter of clicks:

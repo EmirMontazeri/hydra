@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "التوقيع",
   "Signed (verified)": "موقّع (تم التحقق)",
-  "Publisher fingerprint (SHA-256)": "بصمة الناشر (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "بصمة الناشر (SHA-256)",
+  "Customize toolbar": "تخصيص شريط الأدوات",
+  "First": "الأول",
+  "Last": "الأخير",
+  "Toolbar buttons shown: {shown} of {max}": "أزرار شريط الأدوات المعروضة: {shown} من {max}"
 }

@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Handtekening",
   "Signed (verified)": "Ondertekend (geverifieerd)",
-  "Publisher fingerprint (SHA-256)": "Vingerafdruk van de uitgever (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Vingerafdruk van de uitgever (SHA-256)",
+  "Customize toolbar": "Werkbalk aanpassen",
+  "First": "Eerste",
+  "Last": "Laatste",
+  "Toolbar buttons shown: {shown} of {max}": "Zichtbare werkbalkknoppen: {shown} van {max}"
 }

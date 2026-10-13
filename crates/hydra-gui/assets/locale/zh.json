@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "签名",
   "Signed (verified)": "已签名（已验证）",
-  "Publisher fingerprint (SHA-256)": "发布者指纹（SHA-256）"
+  "Publisher fingerprint (SHA-256)": "发布者指纹（SHA-256）",
+  "Customize toolbar": "自定义工具栏",
+  "First": "最前",
+  "Last": "最后",
+  "Toolbar buttons shown: {shown} of {max}": "显示的工具栏按钮：{shown} / {max}"
 }

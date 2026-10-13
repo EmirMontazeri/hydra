@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Podpis",
   "Signed (verified)": "Podepsaný (ověřeno)",
-  "Publisher fingerprint (SHA-256)": "Otisk vydavatele (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Otisk vydavatele (SHA-256)",
+  "Customize toolbar": "Přizpůsobit panel nástrojů",
+  "First": "První",
+  "Last": "Poslední",
+  "Toolbar buttons shown: {shown} of {max}": "Zobrazená tlačítka panelu: {shown} z {max}"
 }

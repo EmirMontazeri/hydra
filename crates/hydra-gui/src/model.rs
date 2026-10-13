@@ -901,6 +901,175 @@ impl Column {
     }
 }
 
+/// A button the toolbar can draw.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum ToolbarItem {
+    AddUrl,
+    Resume,
+    Stop,
+    StopAll,
+    Delete,
+    DeleteCompleted,
+    Options,
+    Extensions,
+    Plugins,
+    Scheduler,
+    StartQueue,
+    StopQueue,
+    SpeedLimit,
+}
+
+/// The most buttons the toolbar draws at once: more would not fit the
+/// window's floor width without squeezing the labels together.
+pub const TOOLBAR_MAX_VISIBLE: usize = 12;
+
+impl ToolbarItem {
+    /// Every button, in the order a fresh install lays them out.
+    pub const ALL: [ToolbarItem; 13] = [
+        ToolbarItem::AddUrl,
+        ToolbarItem::Resume,
+        ToolbarItem::Stop,
+        ToolbarItem::StopAll,
+        ToolbarItem::Delete,
+        ToolbarItem::DeleteCompleted,
+        ToolbarItem::Options,
+        ToolbarItem::Extensions,
+        ToolbarItem::Plugins,
+        ToolbarItem::Scheduler,
+        ToolbarItem::StartQueue,
+        ToolbarItem::StopQueue,
+        ToolbarItem::SpeedLimit,
+    ];
+
+    /// The button's label, which is also the `tr` key the catalogues carry.
+    pub fn label(self) -> &'static str {
+        match self {
+            ToolbarItem::AddUrl => "Add URL",
+            ToolbarItem::Resume => "Resume",
+            ToolbarItem::Stop => "Stop",
+            ToolbarItem::StopAll => "Stop All",
+            ToolbarItem::Delete => "Delete",
+            ToolbarItem::DeleteCompleted => "Delete Completed",
+            ToolbarItem::Options => "Options",
+            ToolbarItem::Extensions => "Extensions",
+            ToolbarItem::Plugins => "Plugins",
+            ToolbarItem::Scheduler => "Scheduler",
+            ToolbarItem::StartQueue => "Start Queue",
+            ToolbarItem::StopQueue => "Stop Queue",
+            ToolbarItem::SpeedLimit => "Speed Limit",
+        }
+    }
+
+    /// Whether the button carries a dropdown arrow beside it.
+    pub fn is_split(self) -> bool {
+        matches!(
+            self,
+            ToolbarItem::StartQueue | ToolbarItem::StopQueue | ToolbarItem::SpeedLimit
+        )
+    }
+
+    /// Plugins is the only button added after the toolbar shipped with twelve;
+    /// it starts hidden so an upgrade does not rearrange anyone's toolbar.
+    fn shown_by_default(self) -> bool {
+        self != ToolbarItem::Plugins
+    }
+}
+
+/// One toolbar button's place in [`Settings::toolbar`] (its index is its
+/// position, left to right) and whether the row draws it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolbarPref {
+    pub id: ToolbarItem,
+    pub visible: bool,
+}
+
+impl ToolbarPref {
+    pub fn new(id: ToolbarItem) -> Self {
+        ToolbarPref {
+            id,
+            visible: id.shown_by_default(),
+        }
+    }
+}
+
+pub fn default_toolbar() -> Vec<ToolbarPref> {
+    ToolbarItem::ALL.into_iter().map(ToolbarPref::new).collect()
+}
+
+/// How the customize dialog moves a button.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ToolbarMove {
+    First,
+    Earlier,
+    Later,
+    Last,
+}
+
+/// Move `item` within the full list, hidden buttons included. Returns whether
+/// the order changed — a button already at that end has nowhere to go.
+pub fn move_toolbar_item(prefs: &mut Vec<ToolbarPref>, item: ToolbarItem, to: ToolbarMove) -> bool {
+    let Some(i) = prefs.iter().position(|p| p.id == item) else {
+        return false;
+    };
+    let j = match to {
+        ToolbarMove::First => 0,
+        ToolbarMove::Earlier => i.saturating_sub(1),
+        ToolbarMove::Later => (i + 1).min(prefs.len() - 1),
+        ToolbarMove::Last => prefs.len() - 1,
+    };
+    if i == j {
+        return false;
+    }
+    let pref = prefs.remove(i);
+    prefs.insert(j, pref);
+    true
+}
+
+pub fn toolbar_visible_count(prefs: &[ToolbarPref]) -> usize {
+    prefs.iter().filter(|p| p.visible).count()
+}
+
+/// Flip one button. Showing a button when [`TOOLBAR_MAX_VISIBLE`] are already
+/// drawn is refused; returns whether anything changed.
+pub fn toggle_toolbar_item(prefs: &mut [ToolbarPref], item: ToolbarItem) -> bool {
+    let full = toolbar_visible_count(prefs) >= TOOLBAR_MAX_VISIBLE;
+    match prefs.iter_mut().find(|p| p.id == item) {
+        Some(p) if p.visible => {
+            p.visible = false;
+            true
+        }
+        Some(p) if !full => {
+            p.visible = true;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Make a loaded list name every [`ToolbarItem`] exactly once and show no
+/// more than [`TOOLBAR_MAX_VISIBLE`]; a hand-edited or older config may do
+/// otherwise.
+fn migrate_toolbar(s: &mut Settings) {
+    let mut seen = Vec::with_capacity(ToolbarItem::ALL.len());
+    s.toolbar.retain(|p| {
+        let first = !seen.contains(&p.id);
+        seen.push(p.id);
+        first
+    });
+    for item in ToolbarItem::ALL {
+        if !s.toolbar.iter().any(|p| p.id == item) {
+            s.toolbar.push(ToolbarPref::new(item));
+        }
+    }
+    let mut shown = 0;
+    for p in &mut s.toolbar {
+        if p.visible {
+            shown += 1;
+            p.visible = shown <= TOOLBAR_MAX_VISIBLE;
+        }
+    }
+}
+
 /// The key the main download table is sorted by: either one of the columns,
 /// or the order in which items were added.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -1161,6 +1330,10 @@ pub struct Settings {
     /// View > Hide toolbar text. Off, the toolbar draws icons alone and each
     /// one carries its label as a hover tooltip instead.
     pub show_toolbar_labels: bool,
+    /// The toolbar's buttons, left to right, and which of them are drawn.
+    /// [`load_config`] normalizes the list, so the rest of the program can
+    /// rely on it naming every [`ToolbarItem`] once.
+    pub toolbar: Vec<ToolbarPref>,
     /// View > Scale, in percent of the size the layout was drawn at; see
     /// [`crate::theme::ui_scale`].
     pub ui_scale_pct: u16,
@@ -1277,6 +1450,7 @@ impl Default for Settings {
             dark_mode: None,
             show_categories: true,
             show_toolbar_labels: true,
+            toolbar: default_toolbar(),
             ui_scale_pct: 100,
             font_size: None,
             global_speed_limit: None,
@@ -1833,6 +2007,7 @@ pub fn normalize_config(mut cfg: ConfigFile) -> ConfigFile {
     migrate_ui_scale(&mut cfg.settings);
     migrate_theme_mode(&mut cfg.settings);
     migrate_columns(&mut cfg.settings);
+    migrate_toolbar(&mut cfg.settings);
     migrate_user_agent(&mut cfg.settings);
     seed_ai_formats(&mut cfg);
     cfg
@@ -2752,6 +2927,162 @@ mod tests {
 
     fn stock() -> Vec<ColumnPref> {
         Column::ALL.into_iter().map(ColumnPref::new).collect()
+    }
+
+    fn toolbar_order(prefs: &[ToolbarPref]) -> Vec<ToolbarItem> {
+        prefs.iter().map(|p| p.id).collect()
+    }
+
+    fn shown(prefs: &[ToolbarPref]) -> Vec<ToolbarItem> {
+        prefs.iter().filter(|p| p.visible).map(|p| p.id).collect()
+    }
+
+    #[test]
+    fn a_fresh_toolbar_shows_the_twelve_it_always_had_and_keeps_plugins_hidden() {
+        let prefs = default_toolbar();
+        assert_eq!(prefs.len(), ToolbarItem::ALL.len());
+        assert_eq!(toolbar_visible_count(&prefs), TOOLBAR_MAX_VISIBLE);
+        assert!(!shown(&prefs).contains(&ToolbarItem::Plugins));
+    }
+
+    #[test]
+    fn a_button_moves_to_either_end_and_stays_put_once_there() {
+        let mut prefs = default_toolbar();
+        assert!(move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::Scheduler,
+            ToolbarMove::First
+        ));
+        assert_eq!(prefs[0].id, ToolbarItem::Scheduler);
+        assert!(!move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::Scheduler,
+            ToolbarMove::First
+        ));
+        assert!(!move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::Scheduler,
+            ToolbarMove::Earlier
+        ));
+
+        assert!(move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::AddUrl,
+            ToolbarMove::Last
+        ));
+        assert_eq!(prefs.last().unwrap().id, ToolbarItem::AddUrl);
+        assert!(!move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::AddUrl,
+            ToolbarMove::Later
+        ));
+        assert_eq!(prefs.len(), ToolbarItem::ALL.len());
+    }
+
+    #[test]
+    fn one_step_swaps_with_the_neighbour_and_keeps_the_rest_in_order() {
+        let mut prefs = default_toolbar();
+        assert!(move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::Stop,
+            ToolbarMove::Earlier
+        ));
+        assert_eq!(
+            toolbar_order(&prefs)[..3],
+            [ToolbarItem::AddUrl, ToolbarItem::Stop, ToolbarItem::Resume]
+        );
+        assert!(move_toolbar_item(
+            &mut prefs,
+            ToolbarItem::Stop,
+            ToolbarMove::Later
+        ));
+        assert_eq!(
+            toolbar_order(&prefs)[..3],
+            [ToolbarItem::AddUrl, ToolbarItem::Resume, ToolbarItem::Stop]
+        );
+    }
+
+    #[test]
+    fn a_thirteenth_button_cannot_be_shown_until_another_is_hidden() {
+        let mut prefs = default_toolbar();
+        assert!(!toggle_toolbar_item(&mut prefs, ToolbarItem::Plugins));
+        assert_eq!(toolbar_visible_count(&prefs), TOOLBAR_MAX_VISIBLE);
+
+        assert!(toggle_toolbar_item(&mut prefs, ToolbarItem::StopAll));
+        assert!(toggle_toolbar_item(&mut prefs, ToolbarItem::Plugins));
+        assert_eq!(toolbar_visible_count(&prefs), TOOLBAR_MAX_VISIBLE);
+        assert!(shown(&prefs).contains(&ToolbarItem::Plugins));
+    }
+
+    #[test]
+    fn hiding_every_button_is_allowed_and_each_comes_back() {
+        let mut prefs = default_toolbar();
+        for item in ToolbarItem::ALL {
+            if prefs.iter().any(|p| p.id == item && p.visible) {
+                assert!(toggle_toolbar_item(&mut prefs, item));
+            }
+        }
+        assert_eq!(toolbar_visible_count(&prefs), 0);
+        assert!(toggle_toolbar_item(&mut prefs, ToolbarItem::Options));
+        assert_eq!(shown(&prefs), [ToolbarItem::Options]);
+    }
+
+    #[test]
+    fn a_config_from_before_the_toolbar_was_customizable_loads_the_stock_row() {
+        let mut s: Settings = toml::from_str("show_toolbar_labels = false\n").unwrap();
+        migrate_toolbar(&mut s);
+        assert_eq!(s.toolbar, default_toolbar());
+    }
+
+    #[test]
+    fn a_hand_edited_toolbar_is_repaired_on_load() {
+        let mut s = Settings {
+            toolbar: vec![
+                ToolbarPref {
+                    id: ToolbarItem::Options,
+                    visible: true,
+                },
+                ToolbarPref {
+                    id: ToolbarItem::Options,
+                    visible: false,
+                },
+            ],
+            ..Settings::default()
+        };
+        migrate_toolbar(&mut s);
+        let ids = toolbar_order(&s.toolbar);
+        assert_eq!(ids[0], ToolbarItem::Options);
+        assert!(s.toolbar[0].visible);
+        for item in ToolbarItem::ALL {
+            assert_eq!(ids.iter().filter(|i| **i == item).count(), 1, "{item:?}");
+        }
+    }
+
+    #[test]
+    fn a_config_showing_more_than_the_limit_keeps_the_first_twelve() {
+        let mut s = Settings {
+            toolbar: ToolbarItem::ALL
+                .into_iter()
+                .map(|id| ToolbarPref { id, visible: true })
+                .collect(),
+            ..Settings::default()
+        };
+        migrate_toolbar(&mut s);
+        assert_eq!(toolbar_visible_count(&s.toolbar), TOOLBAR_MAX_VISIBLE);
+        assert!(!s.toolbar.last().unwrap().visible);
+        assert!(s.toolbar[..TOOLBAR_MAX_VISIBLE].iter().all(|p| p.visible));
+    }
+
+    #[test]
+    fn the_toolbar_survives_a_save_and_load() {
+        let mut s = Settings::default();
+        move_toolbar_item(&mut s.toolbar, ToolbarItem::Plugins, ToolbarMove::First);
+        toggle_toolbar_item(&mut s.toolbar, ToolbarItem::Stop);
+        toggle_toolbar_item(&mut s.toolbar, ToolbarItem::Plugins);
+        let text = toml::to_string(&s).unwrap();
+        let mut back: Settings = toml::from_str(&text).unwrap();
+        migrate_toolbar(&mut back);
+        assert_eq!(back.toolbar, s.toolbar);
     }
 
     #[test]

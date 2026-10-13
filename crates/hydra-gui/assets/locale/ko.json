@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "서명",
   "Signed (verified)": "서명됨 (검증됨)",
-  "Publisher fingerprint (SHA-256)": "게시자 지문 (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "게시자 지문 (SHA-256)",
+  "Customize toolbar": "도구 모음 사용자 지정",
+  "First": "맨 앞",
+  "Last": "맨 뒤",
+  "Toolbar buttons shown: {shown} of {max}": "표시된 도구 모음 버튼: {shown} / {max}"
 }

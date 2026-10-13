@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "署名",
   "Signed (verified)": "署名済み（検証済み）",
-  "Publisher fingerprint (SHA-256)": "発行者のフィンガープリント（SHA-256）"
+  "Publisher fingerprint (SHA-256)": "発行者のフィンガープリント（SHA-256）",
+  "Customize toolbar": "ツールバーをカスタマイズ",
+  "First": "先頭",
+  "Last": "末尾",
+  "Toolbar buttons shown: {shown} of {max}": "表示中のツールバーボタン: {shown} / {max}"
 }

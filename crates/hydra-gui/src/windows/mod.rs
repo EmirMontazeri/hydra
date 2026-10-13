@@ -15,6 +15,7 @@ pub mod power;
 pub mod progress;
 pub mod scheduler;
 pub mod shortcuts;
+pub mod toolbar;
 pub mod update;
 pub mod zip_preview;
 

@@ -621,5 +621,9 @@
   "⬇": "⬇",
   "Signature": "Aláírás",
   "Signed (verified)": "Aláírva (ellenőrizve)",
-  "Publisher fingerprint (SHA-256)": "Kiadó ujjlenyomata (SHA-256)"
+  "Publisher fingerprint (SHA-256)": "Kiadó ujjlenyomata (SHA-256)",
+  "Customize toolbar": "Eszköztár testreszabása",
+  "First": "Első",
+  "Last": "Utolsó",
+  "Toolbar buttons shown: {shown} of {max}": "Megjelenített eszköztárgombok: {shown} / {max}"
 }
