@@ -1974,15 +1974,31 @@ impl Default for StateFile {
 }
 
 pub fn load_config() -> ConfigFile {
-    let path = app_dir().join("config.toml");
-    let cfg = match std::fs::read_to_string(&path) {
-        Ok(text) => toml::from_str(&text).unwrap_or_else(|e| {
-            crate::log::warn(&format!("config.toml unparsable ({e}); using defaults"));
-            ConfigFile::default()
-        }),
-        Err(_) => ConfigFile::default(),
+    normalize_config(read_config(&app_dir().join("config.toml")))
+}
+
+/// An unparsable file is moved aside, not left for the next save to
+/// overwrite with defaults: the user's settings stay recoverable.
+fn read_config(path: &std::path::Path) -> ConfigFile {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return ConfigFile::default();
     };
-    normalize_config(cfg)
+    match toml::from_str(&text) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            let aside = path.with_extension("toml.corrupt");
+            let kept = std::fs::rename(path, &aside).is_ok();
+            crate::log::warn(&format!(
+                "config.toml unparsable ({e}); using defaults{}",
+                if kept {
+                    ", original kept as config.toml.corrupt"
+                } else {
+                    ""
+                }
+            ));
+            ConfigFile::default()
+        }
+    }
 }
 
 /// Fill in defaults and migrate older keys — whatever version of Hydra, on
@@ -2199,8 +2215,22 @@ pub fn save_config(cfg: &ConfigFile) {
     let dir = app_dir();
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(s) = toml::to_string_pretty(cfg) {
-        let _ = std::fs::write(dir.join("config.toml"), s);
+        if let Err(e) = write_atomic(&dir.join("config.toml"), s.as_bytes()) {
+            crate::log::error(&format!("config.toml save failed: {e}"));
+        }
     }
+}
+
+/// Write through a temp file and rename, so a kill or crash mid-write leaves
+/// the previous complete file instead of a truncated one that loads as
+/// partly (or wholly) default settings.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("toml.tmp");
+    let mut f = std::fs::File::create(&tmp)?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    std::fs::rename(&tmp, path)
 }
 
 // ---------------------------------------------------------------- state db
@@ -2347,6 +2377,48 @@ pub fn save_quota(q: &DlQuota) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn atomic_write_replaces_whole_file_and_leaves_no_temp() {
+        let dir = std::env::temp_dir().join(format!("hya-cfg-{}-a", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        write_atomic(&path, b"language = \"fa\"\n[settings]\n").unwrap();
+        write_atomic(&path, b"language = \"en\"\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "language = \"en\"\n"
+        );
+        assert!(!path.with_extension("toml.tmp").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn unparsable_config_is_kept_aside_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("hya-cfg-{}-b", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[settings\nstart_in_tray = tr").unwrap();
+        let cfg = read_config(&path);
+        assert!(cfg.settings.start_in_tray == ConfigFile::default().settings.start_in_tray);
+        assert!(!path.exists());
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("toml.corrupt")).unwrap(),
+            "[settings\nstart_in_tray = tr"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn valid_config_is_read_unchanged() {
+        let dir = std::env::temp_dir().join(format!("hya-cfg-{}-c", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[settings]\nstart_in_tray = true\n").unwrap();
+        assert!(read_config(&path).settings.start_in_tray);
+        assert!(path.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn old_configs_keep_default_arrangement_and_scheduler_widths() {
         let cfg = normalize_config(toml::from_str("[settings]\nfont_size = 13").unwrap());

@@ -125,7 +125,12 @@ impl StreamDigest {
         }
     }
 
-    fn abandon(&mut self) {
+    /// Give up on the digest now, keeping the head for classification.
+    ///
+    /// For a transfer known to open several spans, where the first
+    /// out-of-order fragment would otherwise start buffering toward a cap it is
+    /// certain to hit.
+    pub fn abandon(&mut self) {
         self.abandoned = true;
         self.pending.clear();
         self.pending_bytes = 0;
@@ -197,6 +202,21 @@ mod tests {
         let mut h = Sha256::new();
         h.update(data);
         crate::digest::to_lower_hex(&h.finalize())
+    }
+
+    #[test]
+    fn abandoning_early_keeps_the_head_and_stops_buffering() {
+        let mut sd = StreamDigest::new(DEFAULT_REORDER_CAP);
+        sd.abandon();
+        sd.write(0, b"%PDF-1.7 head");
+        sd.write(1 << 20, &[0u8; 4096]);
+        assert!(sd.is_abandoned());
+        assert_eq!(
+            sd.pending_bytes, 0,
+            "nothing may be buffered once abandoned"
+        );
+        assert!(sd.head().starts_with(b"%PDF-1.7"));
+        assert_eq!(sd.finish(1 << 20), None);
     }
 
     #[test]

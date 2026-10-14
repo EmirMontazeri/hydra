@@ -86,6 +86,14 @@ impl SparseSink {
         self
     }
 
+    /// Stop hashing but keep capturing the head, for a transfer that will open
+    /// several spans and so cannot finish the digest (see [`stream_digest`]).
+    pub fn abandon_digest(&self) {
+        if let Some(Ok(mut g)) = self.digest.as_ref().map(|m| m.lock()) {
+            g.abandon();
+        }
+    }
+
     /// Take the accumulated digest state, if one was attached.
     ///
     /// Returns `(sha256, head_bytes, unavailable_reason)`. The digest is `None`
@@ -182,6 +190,26 @@ impl SparseSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_abandoned_digest_still_reports_the_head_and_the_reason() {
+        let sk = SparseSink::discarding().with_digest(1 << 20);
+        sk.abandon_digest();
+        sk.write_at(0, b"\x89PNG\r\n\x1a\n").unwrap();
+        sk.write_at(4096, &[1; 512]).unwrap();
+        let (sha, head, reason) = sk.take_digest(8192).unwrap();
+        assert_eq!(sha, None);
+        assert!(head.starts_with(b"\x89PNG"));
+        assert!(reason.unwrap().contains("out of order"));
+    }
+
+    #[test]
+    fn abandoning_without_a_digest_is_a_no_op() {
+        let sk = SparseSink::discarding();
+        sk.abandon_digest();
+        sk.write_at(0, &[1; 8]).unwrap();
+        assert!(sk.take_digest(8).is_none());
+    }
 
     #[test]
     fn reopening_the_sink_does_not_erase_what_another_handle_wrote() {

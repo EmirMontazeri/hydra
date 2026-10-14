@@ -3697,6 +3697,17 @@ fn plan(job: &Job, s: &mut Prepared, placement: &Placement) -> Result<(Plan, Sea
     ))
 }
 
+/// The second span of a parallel transfer opens ahead of the write frontier, so
+/// the stream digest must buffer `(n-1)/n` of the object. When that exceeds the
+/// reorder cap the digest is certain to be abandoned, and buffering toward it
+/// only wastes copies.
+fn digest_cannot_finish(size: u64, spans: usize) -> bool {
+    let spans = spans as u64;
+    spans > 1
+        && size.saturating_mul(spans - 1) / spans
+            > hya_net::stream_digest::DEFAULT_REORDER_CAP as u64
+}
+
 /// Run the scheduler over the seats and sample what it did.
 async fn transfer(
     job: &Job,
@@ -4026,6 +4037,11 @@ async fn transfer(
         // instead, so the size, checksum, and format classification are all
         // computed from the STREAM. There is no file at any point.
         let sink = discard_sink.clone();
+        if digest_cannot_finish(size, per.iter().sum()) {
+            if let Some(sk) = &sink {
+                sk.abandon_digest();
+            }
+        }
         // One limiter for the whole transfer, however many connections it opens:
         // `--limit-rate 1M` means the transfer uses 1 MB/s, not 1 MB/s per
         // connection. `--no-save` is capped too — the bytes still cross the
@@ -5401,6 +5417,30 @@ mod tests {
         assert_eq!(RangeSpec::From(99_999).resolve(10_000), None);
         assert_eq!(RangeSpec::Closed(500, 499).resolve(10_000), None);
         assert_eq!(RangeSpec::Suffix(0).resolve(10_000), None);
+    }
+
+    #[test]
+    fn a_parallel_digest_is_abandoned_only_when_it_cannot_fit_the_reorder_buffer() {
+        const MIB: u64 = 1024 * 1024;
+        assert!(
+            !digest_cannot_finish(1024 * MIB, 1),
+            "one span is sequential"
+        );
+        assert!(
+            !digest_cannot_finish(4 * MIB, 4),
+            "small objects still hash"
+        );
+        assert!(
+            !digest_cannot_finish(16 * MIB, 2),
+            "exactly the cap still fits"
+        );
+        assert!(digest_cannot_finish(16 * MIB + 2, 2));
+        assert!(digest_cannot_finish(64 * MIB, 8));
+        assert!(!digest_cannot_finish(u64::MAX, 1));
+        assert!(
+            digest_cannot_finish(u64::MAX, 16),
+            "no overflow on huge sizes"
+        );
     }
 
     /// `--no-save` must never create the output file.
