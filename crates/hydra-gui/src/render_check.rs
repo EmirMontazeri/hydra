@@ -385,6 +385,7 @@ fn download(i: u64) -> DownloadItem {
         plugin_plan: None,
         metalink: None,
         name_locked: false,
+        name_from_browser: false,
         proxy: Default::default(),
     }
 }

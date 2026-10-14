@@ -3651,6 +3651,7 @@ impl App {
             plugin_plan: None,
             metalink: None,
             name_locked: false,
+            name_from_browser: false,
             proxy: ProxyChoice::default(),
         });
         self.save_state();
@@ -4985,8 +4986,13 @@ impl App {
                 d.size = size;
             }
             if let Some(name) = name.filter(|n| !n.is_empty()) {
-                if may_adopt_name(d) && !escaped_spelling_of(&name, &d.file_name) {
+                let same_as_browser =
+                    d.name_from_browser && escaped_spelling_of(&name, &d.file_name);
+                if may_adopt_name(d) && !same_as_browser {
                     adopted = d.set_file_name(&name);
+                    if adopted {
+                        d.name_from_browser = false;
+                    }
                 }
             }
         }
@@ -8883,6 +8889,7 @@ fn write_capture_extras(
     }
     if let Some(n) = extras.name {
         d.set_file_name(&n);
+        d.name_from_browser = true;
         if let Some((cat, dir)) = filing {
             d.category = cat;
             if let Some(dir) = dir {
@@ -10802,6 +10809,7 @@ mod tests {
             plugin_plan: None,
             metalink: None,
             name_locked: false,
+            name_from_browser: false,
             proxy: ProxyChoice::default(),
         }
     }
@@ -11804,8 +11812,28 @@ mod tests {
         assert!(escaped_spelling_of("a%2Bb.zip", "a+b.zip"));
         assert!(!escaped_spelling_of("My File.zip", "My File.zip"));
         assert!(!escaped_spelling_of("My%20File.zip", "Other File.zip"));
-        // A `%` that escapes nothing decodes to itself.
-        assert!(!escaped_spelling_of("100%.zip", "100 .zip"));
+        // A `%` that escapes nothing stays in the name, so it can't match one without it.
+        assert!(!escaped_spelling_of("100%.zip", "100.zip"));
+        // An escape at the very end decodes too.
+        assert!(escaped_spelling_of("file.zi%70", "file.zip"));
+    }
+
+    /// A name Hydra made up from the URL has no browser reading behind it, so
+    /// the server's literal spelling still wins, as `decode_legacy_filename`
+    /// intends.
+    #[test]
+    fn a_probe_still_renames_an_item_named_from_its_url() {
+        let mut app = App::default();
+        let id = app.add_item("https://example.com/100%20off.zip".into(), None, None);
+        assert_eq!(app.item(id).unwrap().file_name, "100 off.zip");
+
+        let meta = engine::LinkMeta {
+            size: Some(9),
+            file_name: Some("100%20off.zip".into()),
+            is_metalink: false,
+        };
+        let _ = app.update(Message::InfoProbed(id, Some(meta)));
+        assert_eq!(app.item(id).unwrap().file_name, "100%20off.zip");
     }
 
     #[test]
