@@ -4985,7 +4985,7 @@ impl App {
                 d.size = size;
             }
             if let Some(name) = name.filter(|n| !n.is_empty()) {
-                if may_adopt_name(d) {
+                if may_adopt_name(d) && !escaped_spelling_of(&name, &d.file_name) {
                     adopted = d.set_file_name(&name);
                 }
             }
@@ -9023,6 +9023,19 @@ fn may_adopt_name(d: &DownloadItem) -> bool {
     !d.name_locked && d.downloaded == 0 && d.held.is_empty()
 }
 
+/// Is `probed` only `current` with its percent-escapes left in?
+///
+/// Chromium decodes a plain `filename="My%20File.zip"` to `My File.zip`, and
+/// that is the name the extension hands over. `suggested_filename` keeps the
+/// escapes on purpose, so without this check the probe would put the `%20`s
+/// back. A name that differs in anything else still wins.
+fn escaped_spelling_of(probed: &str, current: &str) -> bool {
+    probed != current
+        && probed.contains('%')
+        && hya_net::filename::portable(&hya_net::url::percent_decode(probed)).as_deref()
+            == Some(current)
+}
+
 fn move_stream_companions(from_part: &std::path::Path, to_part: &std::path::Path) {
     let Some(parent) = from_part.parent() else {
         return;
@@ -11745,6 +11758,54 @@ mod tests {
             app.batch.names.get(url).map(String::as_str),
             Some("clip.mp4")
         );
+    }
+
+    /// Edge captured `My File.zip` from `filename="My%20File.zip"`; the probe
+    /// reads the same header and keeps the escapes. The browser's spelling
+    /// must survive, and a probe naming something else must still win.
+    #[test]
+    fn a_probe_does_not_put_escapes_back_into_a_captured_name() {
+        let mut app = App::default();
+        let url = "https://cdn.example.com/get?id=42";
+        let id = app.add_item(url.into(), None, None);
+        app.apply_capture_extras(
+            id,
+            CaptureExtras {
+                name: Some("My File.zip".into()),
+                ..CaptureExtras::default()
+            },
+        );
+        assert_eq!(app.item(id).unwrap().file_name, "My File.zip");
+
+        let meta = |name: &str| engine::LinkMeta {
+            size: Some(9),
+            file_name: Some(name.into()),
+            is_metalink: false,
+        };
+        let _ = app.update(Message::InfoProbed(id, Some(meta("My%20File.zip"))));
+        assert_eq!(app.item(id).unwrap().file_name, "My File.zip");
+
+        // Non-ASCII escapes come to the same thing.
+        app.item_mut(id).unwrap().file_name = "été 2026.pdf".into();
+        let _ = app.update(Message::InfoProbed(
+            id,
+            Some(meta("%C3%A9t%C3%A9%202026.pdf")),
+        ));
+        assert_eq!(app.item(id).unwrap().file_name, "été 2026.pdf");
+
+        // A different name is a real answer from the server and still wins.
+        let _ = app.update(Message::InfoProbed(id, Some(meta("100%20off.zip"))));
+        assert_eq!(app.item(id).unwrap().file_name, "100%20off.zip");
+    }
+
+    #[test]
+    fn escaped_spelling_is_only_the_same_name_with_escapes() {
+        assert!(escaped_spelling_of("My%20File.zip", "My File.zip"));
+        assert!(escaped_spelling_of("a%2Bb.zip", "a+b.zip"));
+        assert!(!escaped_spelling_of("My File.zip", "My File.zip"));
+        assert!(!escaped_spelling_of("My%20File.zip", "Other File.zip"));
+        // A `%` that escapes nothing decodes to itself.
+        assert!(!escaped_spelling_of("100%.zip", "100 .zip"));
     }
 
     #[test]
