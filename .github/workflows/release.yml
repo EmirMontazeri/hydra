@@ -123,8 +123,13 @@ jobs:
           grep -q "^%global _version ${VERSION}$" "$RPM_TOP/SPECS/hydra.spec"
           rpmbuild -bs --nodeps --define "_topdir $RPM_TOP" "$RPM_TOP/SPECS/hydra.spec"
 
+  # Official plugins are built, signed and bundled for stable releases only; a
+  # pre-release ships the application without them (see build.rs, which treats
+  # an unset HYDRA_OFFICIAL_PLUGIN_DIR as an empty bundle).
   verify-plugin-tools:
     name: Verify plugin tools on ${{ matrix.runner }}
+    needs: [verify-version]
+    if: needs.verify-version.outputs.prerelease == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +159,9 @@ jobs:
   build:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
     needs: [verify-version, verify-plugin-tools, build-official-plugins]
+    if: >-
+      !cancelled() && needs.verify-version.result == 'success'
+      && !contains(needs.*.result, 'failure')
     strategy:
       fail-fast: false
       matrix:
@@ -196,7 +204,6 @@ jobs:
             target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     env:
-      HYDRA_OFFICIAL_PLUGIN_DIR: ${{ github.workspace }}/plugins/bundled
       VERSION: ${{ needs.verify-version.outputs.version }}
       PLATFORM: ${{ matrix.os }}-${{ matrix.arch }}
       TARGET: ${{ matrix.target }}
@@ -205,10 +212,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download signed official plugins
+        if: needs.verify-version.outputs.prerelease == 'false'
         uses: actions/download-artifact@v4
         with:
           name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: plugins/bundled
+      - name: Bundle the official plugins into the build
+        if: needs.verify-version.outputs.prerelease == 'false'
+        shell: bash
+        run: echo "HYDRA_OFFICIAL_PLUGIN_DIR=${{ github.workspace }}/plugins/bundled" >> "$GITHUB_ENV"
 
       # musl-tools is for the static CLI below: `ring` and `blake3` compile C
       # and assembly, so the musl target needs a C compiler that knows the musl
@@ -427,6 +439,9 @@ jobs:
   build-appimage:
     name: AppImage ${{ matrix.arch }}
     needs: [verify-version, build-official-plugins]
+    if: >-
+      !cancelled() && needs.verify-version.result == 'success'
+      && !contains(needs.*.result, 'failure')
     strategy:
       fail-fast: false
       matrix:
@@ -445,7 +460,6 @@ jobs:
       run:
         shell: bash
     env:
-      HYDRA_OFFICIAL_PLUGIN_DIR: ${{ github.workspace }}/plugins/bundled
       VERSION: ${{ needs.verify-version.outputs.version }}
       TARGET: ${{ matrix.target }}
       DEBIAN_FRONTEND: noninteractive
@@ -472,10 +486,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download signed official plugins
+        if: needs.verify-version.outputs.prerelease == 'false'
         uses: actions/download-artifact@v4
         with:
           name: ${{ vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true' && 'unsigned-official-plugins' || 'official-plugins' }}
           path: plugins/bundled
+      - name: Bundle the official plugins into the build
+        if: needs.verify-version.outputs.prerelease == 'false'
+        shell: bash
+        run: echo "HYDRA_OFFICIAL_PLUGIN_DIR=${{ github.workspace }}/plugins/bundled" >> "$GITHUB_ENV"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -570,6 +589,7 @@ jobs:
   verify-appimage:
     name: AppImage runs on Ubuntu ${{ matrix.release }}
     needs: [build-appimage]
+    if: needs.build-appimage.result == 'success'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -1074,11 +1094,13 @@ jobs:
   verify-official-plugins:
     name: Verify official plugin packages
     needs: [verify-version, verify-plugin-tools]
+    if: needs.verify-version.outputs.prerelease == 'false'
     uses: ./.github/workflows/official-plugins.yml
 
   build-official-plugins:
     name: Build and sign official plugins
     needs: [verify-version, verify-plugin-tools, verify-official-plugins]
+    if: needs.verify-version.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1146,7 +1168,10 @@ jobs:
           if-no-files-found: error
 
   sign-windows:
-    if: vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true'
+    if: >-
+      !cancelled() && vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true'
+      && needs.verify-version.outputs.prerelease == 'false'
+      && needs.build.result == 'success' && needs.build-ffi.result == 'success'
     permissions:
       contents: read
       actions: read
@@ -1160,7 +1185,11 @@ jobs:
       HYDRA_PLUGIN_SIGNING_KEY: ${{ secrets.HYDRA_PLUGIN_SIGNING_KEY }}
 
   signed-official-plugins:
-    needs: [sign-windows, build-official-plugins]
+    needs: [verify-version, sign-windows, build-official-plugins]
+    if: >-
+      !cancelled() && needs.verify-version.outputs.prerelease == 'false'
+      && needs.sign-windows.result == 'success'
+      && needs.build-official-plugins.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -1232,8 +1261,10 @@ jobs:
       - name: Exclude intermediate files from release assets
         run: |
           rm -f dist/unsigned-*.hyaplugin dist/hydra-torrent-native.dll dist/hydra-torrent-native.pdb
-          mkdir -p plugins/bundled
-          mv dist/native plugins/bundled/native
+          if [ -d dist/native ]; then
+            mkdir -p plugins/bundled
+            mv dist/native plugins/bundled/native
+          fi
 
       - name: Download signed installation scripts
         if: vars.SIGNPATH_RELEASE_SIGNING_ENABLED == 'true'

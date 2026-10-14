@@ -42,8 +42,12 @@ esac
 # hydra-gui, hydra-cli and hydra-host bin crates this installer bundles.
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 
-python3 scripts/plugins/stage-official.py --version "$VERSION"
-export HYDRA_OFFICIAL_PLUGIN_DIR="$(pwd)/plugins/bundled"
+# A pre-release (X.Y.Z-rc) ships without official plugins: their bundle is
+# only published with the stable release this would download it from.
+if [[ "$VERSION" != *-* ]]; then
+  python3 scripts/plugins/stage-official.py --version "$VERSION"
+  export HYDRA_OFFICIAL_PLUGIN_DIR="$(pwd)/plugins/bundled"
+fi
 
 if [ "$NO_BUILD" = 0 ]; then
   echo "building hydra-gui + hydra-host + hydra (cli) for $TARGET..."
