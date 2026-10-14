@@ -1709,6 +1709,35 @@ pub(crate) async fn fetch_range_following<C: Connector>(
     ))
 }
 
+/// Extend a read of `n` bytes in `buf[..n]` with whatever is already readable,
+/// up to `buf.len()`, without suspending.
+///
+/// rustls yields at most one TLS record (<= 16 KiB) per read, so without this
+/// every record costs its own write, channel send and clock read. A real error
+/// is returned alongside the bytes already gathered so the caller can credit
+/// them first; EOF is left for the next read to report.
+fn drain_ready<S: tokio::io::AsyncRead + Unpin>(
+    s: &mut S,
+    buf: &mut [u8],
+    mut n: usize,
+) -> (usize, Option<io::Error>) {
+    // The caller's next real `.await` re-registers its waker before it can
+    // sleep, so polling with a no-op waker here cannot lose a readiness edge.
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    while n < buf.len() {
+        let mut rb = tokio::io::ReadBuf::new(&mut buf[n..]);
+        match std::pin::Pin::new(&mut *s).poll_read(&mut cx, &mut rb) {
+            std::task::Poll::Ready(Ok(())) => match rb.filled().len() {
+                0 => break,
+                m => n += m,
+            },
+            std::task::Poll::Ready(Err(e)) => return (n, Some(e)),
+            std::task::Poll::Pending => break,
+        }
+    }
+    (n, None)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fetch_range<C: Connector>(
     c: Arc<C>,
@@ -1970,12 +1999,18 @@ pub(crate) async fn fetch_range<C: Connector>(
     // a "header too large" failure on a perfectly healthy endpoint. Repairs
     // cluster in the endgame, so this fired hardest exactly where users saw it.
     let mut cur_hi = hi;
+    let mut deferred: Option<io::Error> = None;
     while off < cur_hi {
+        if let Some(e) = deferred.take() {
+            return Err(e);
+        }
         let want = pace.read_size(((cur_hi - off) as usize).min(READ_BUF));
         let n = s.read(&mut buf[..want]).await?;
         if n == 0 {
             break;
         }
+        let (n, err) = drain_ready(&mut s, &mut buf[..want], n);
+        deferred = err;
         // A repair may have moved the far end while this read was parked. Re-read
         // before crediting, and clamp: bytes past the new bound belong to whichever
         // connection was given them, so writing them here would double-count
@@ -2099,6 +2134,7 @@ where
     let mut off = lo;
     let mut last = Instant::now();
     let mut read_buf = vec![0u8; READ_BUF];
+    let mut deferred: Option<io::Error> = None;
     // Contiguous run of decoded payload not yet reported to the scheduler.
     // Flushed once per read, and before returning, so no bytes go uncredited.
     let mut pend_off = lo;
@@ -2225,7 +2261,13 @@ where
         // crossed the link, and a cap that only counted payload would exceed the
         // configured rate on a body with many small chunks.
         let want = pace.read_size(read_buf.len());
-        let n = s.read(&mut read_buf[..want]).await?;
+        if let Some(e) = deferred.take() {
+            return Err(e);
+        }
+        let mut n = s.read(&mut read_buf[..want]).await?;
+        if n > 0 {
+            (n, deferred) = drain_ready(&mut s, &mut read_buf[..want], n);
+        }
         if n > 0 {
             pace.wait(n as u64).await;
         }
@@ -2672,6 +2714,91 @@ pub(crate) fn find_crlf2(b: &[u8]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Hands out scripted reads: `Some(bytes)` is one readable chunk, `None` is
+    /// "not ready", and an `Err` is a transport failure.
+    struct Script(std::collections::VecDeque<io::Result<Option<Vec<u8>>>>);
+
+    impl tokio::io::AsyncRead for Script {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            rb: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            match self.0.pop_front() {
+                None | Some(Ok(None)) => std::task::Poll::Pending,
+                Some(Err(e)) => std::task::Poll::Ready(Err(e)),
+                Some(Ok(Some(b))) => {
+                    let n = b.len().min(rb.remaining());
+                    rb.put_slice(&b[..n]);
+                    std::task::Poll::Ready(Ok(()))
+                }
+            }
+        }
+    }
+
+    fn script(items: Vec<io::Result<Option<Vec<u8>>>>) -> Script {
+        Script(items.into())
+    }
+
+    #[test]
+    fn drain_ready_gathers_every_record_already_readable() {
+        let mut s = script(vec![
+            Ok(Some(vec![2; 4])),
+            Ok(Some(vec![3; 4])),
+            Ok(None),
+            Ok(Some(vec![9; 4])),
+        ]);
+        let mut buf = [0u8; 32];
+        buf[..4].copy_from_slice(&[1; 4]);
+        let (n, err) = drain_ready(&mut s, &mut buf, 4);
+        assert!(err.is_none());
+        assert_eq!(n, 12, "stops at the first read that would block");
+        assert_eq!(&buf[..12], &[1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]);
+    }
+
+    #[test]
+    fn drain_ready_never_reads_past_the_buffer_it_was_given() {
+        let mut s = script(vec![Ok(Some(vec![7; 100]))]);
+        let mut buf = [0u8; 10];
+        let (n, err) = drain_ready(&mut s, &mut buf[..6], 4);
+        assert!(err.is_none());
+        assert_eq!(n, 6);
+        assert_eq!(&buf[6..], &[0; 4]);
+    }
+
+    #[test]
+    fn drain_ready_does_nothing_when_the_buffer_is_already_full() {
+        let mut s = script(vec![Ok(Some(vec![7; 4]))]);
+        let mut buf = [0u8; 4];
+        let (n, err) = drain_ready(&mut s, &mut buf, 4);
+        assert!(err.is_none());
+        assert_eq!(n, 4);
+        assert_eq!(s.0.len(), 1, "the unread record must stay queued");
+    }
+
+    #[test]
+    fn drain_ready_leaves_eof_for_the_next_read() {
+        let mut s = script(vec![Ok(Some(vec![])), Ok(Some(vec![5; 4]))]);
+        let mut buf = [0u8; 16];
+        let (n, err) = drain_ready(&mut s, &mut buf, 2);
+        assert!(err.is_none());
+        assert_eq!(n, 2);
+    }
+
+    /// A reset seen mid-drain must not turn into a clean end of stream: the
+    /// bytes gathered so far are returned and the error travels with them.
+    #[test]
+    fn drain_ready_returns_the_error_with_the_bytes_before_it() {
+        let mut s = script(vec![
+            Ok(Some(vec![2; 4])),
+            Err(io::Error::from(io::ErrorKind::ConnectionReset)),
+        ]);
+        let mut buf = [0u8; 16];
+        let (n, err) = drain_ready(&mut s, &mut buf, 4);
+        assert_eq!(n, 8);
+        assert_eq!(err.unwrap().kind(), io::ErrorKind::ConnectionReset);
+    }
 
     /// A 3xx has to come back as something a caller can ACT on.
     ///
@@ -3329,6 +3456,118 @@ mod tests {
             r.is_err(),
             "a body that ends mid-chunk must not be reported as complete"
         );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    impl tokio::io::AsyncWrite for Script {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            b: &[u8],
+        ) -> std::task::Poll<io::Result<usize>> {
+            std::task::Poll::Ready(Ok(b.len()))
+        }
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    struct Scripted(std::sync::Mutex<Option<Script>>);
+
+    impl Connector for Scripted {
+        type Stream = Script;
+        fn connect<'a>(
+            &'a self,
+            _: &'a Target,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<Script>> + Send + 'a>>
+        {
+            Box::pin(async move { Ok(self.0.lock().unwrap().take().expect("one connection")) })
+        }
+    }
+
+    /// A reset that arrives right behind readable bytes is seen inside the
+    /// drain, not by the read the loop awaits. It must still surface as the
+    /// reset, after the bytes before it were credited, rather than vanish into
+    /// a clean end of stream.
+    #[tokio::test]
+    async fn fetch_range_reports_a_reset_that_follows_readable_bytes() {
+        let head = b"HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-15/16\r\nContent-Length: 16\r\n\r\n";
+        let stream = script(vec![
+            Ok(Some(head.to_vec())),
+            Ok(Some(b"abcd".to_vec())),
+            Ok(Some(b"efgh".to_vec())),
+            Err(io::Error::from(io::ErrorKind::ConnectionReset)),
+        ]);
+        let path =
+            std::env::temp_dir().join(format!("hydra_drain_reset_{}.bin", std::process::id()));
+        let path_s = path.to_string_lossy().to_string();
+        let sink = Arc::new(SparseSink::create(&path_s, 16).unwrap());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let r = fetch_range(
+            Arc::new(Scripted(std::sync::Mutex::new(Some(stream)))),
+            0,
+            Target::direct("127.0.0.1", 1, "/obj"),
+            0,
+            crate::Watermark::fixed(16),
+            sink,
+            tx,
+            Instant::now(),
+            Pace::unlimited(),
+            None,
+        )
+        .await;
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::ConnectionReset);
+        let mut credited = 0;
+        while let Ok(a) = rx.try_recv() {
+            credited += a.bytes;
+        }
+        assert_eq!(
+            credited, 8,
+            "the bytes read before the reset are still credited"
+        );
+        assert_eq!(&std::fs::read(&path).unwrap()[..8], b"abcdefgh");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn stream_chunked_reports_a_reset_that_follows_readable_bytes() {
+        let stream = script(vec![
+            Ok(Some(b"c\r\nhello ".to_vec())),
+            Ok(Some(b"wo".to_vec())),
+            Err(io::Error::from(io::ErrorKind::ConnectionReset)),
+        ]);
+        let path =
+            std::env::temp_dir().join(format!("hydra_chunk_reset_{}.bin", std::process::id()));
+        let path_s = path.to_string_lossy().to_string();
+        let sink = Arc::new(SparseSink::create(&path_s, 12).unwrap());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let r = stream_chunked(
+            stream,
+            0,
+            0,
+            crate::Watermark::fixed(12),
+            b"",
+            sink,
+            tx,
+            Instant::now(),
+            Pace::unlimited(),
+        )
+        .await;
+        assert_eq!(r.unwrap_err().kind(), io::ErrorKind::ConnectionReset);
+        let mut credited = 0;
+        while let Ok(a) = rx.try_recv() {
+            credited += a.bytes;
+        }
+        assert_eq!(credited, 8);
         let _ = std::fs::remove_file(&path);
     }
 

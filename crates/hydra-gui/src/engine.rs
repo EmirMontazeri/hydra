@@ -450,7 +450,16 @@ fn spawn_engine() -> UnboundedSender<Cmd> {
     std::thread::Builder::new()
         .name("hydra-engine".into())
         .spawn(move || {
+            // One worker, as in the CLI: with one per core, concurrent positioned
+            // writes into the same file contend in the kernel (macOS, 16 conns x
+            // 4 files: 5.7 CPU-s/GiB at 12 workers vs 1.2 at one, same throughput).
+            let workers = std::env::var("HYDRA_WORKERS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .filter(|&n| n >= 1)
+                .unwrap_or(1);
             let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(workers)
                 .enable_all()
                 .build()
                 .expect("engine runtime");
