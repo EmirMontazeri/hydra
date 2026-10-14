@@ -1581,6 +1581,7 @@ pub enum OptField {
     Browser(usize, bool),
     /// Only offered by a `--config DIR` instance (Options > Extensions).
     PortableCapture(bool),
+    CapturePluginUrls(bool),
     /// Remove a trusted extension origin, by index.
     Untrust(usize),
     AutoTypesEdit(iced::widget::text_editor::Action),
