@@ -1247,6 +1247,9 @@ pub struct Settings {
     /// browser capture away from any ordinary install on the same account.
     /// Ignored without `--config`. See [`crate::nmhost::ensure_registered`].
     pub portable_capture: bool,
+    /// Options > Extensions: hand the addresses an enabled plugin claims
+    /// (magnet links, video pages) from the browser to that plugin.
+    pub capture_plugin_urls: bool,
     /// WebSocket origins (`moz-extension://<uuid>`, ...) the user allowed to
     /// connect without the native host's token. Local to this profile: an
     /// origin names one browser install, so it neither exports nor imports.
@@ -1403,6 +1406,7 @@ impl Default for Settings {
             // A fresh config already has them, so there is nothing to add.
             ai_formats_seeded: true,
             portable_capture: false,
+            capture_plugin_urls: true,
             allowed_extensions: Vec::new(),
             dont_start_sites: "*.update.microsoft.com download.windowsupdate.com".into(),
             remember_last_dir: true,
@@ -1527,6 +1531,7 @@ impl Settings {
             capture_browsers,
             auto_types,
             portable_capture,
+            capture_plugin_urls,
             allowed_extensions,
             dont_start_sites,
             remember_last_dir,
