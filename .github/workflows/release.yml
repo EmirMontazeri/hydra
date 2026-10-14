@@ -399,6 +399,8 @@ jobs:
       - name: Build NSIS installer (Windows)
         if: matrix.os == 'windows'
         shell: bash
+        env:
+          HYDRA_SKIP_OFFICIAL_PLUGINS: ${{ needs.verify-version.outputs.prerelease == 'true' && '1' || '' }}
         run: |
           set -euo pipefail
           ARCH=x64

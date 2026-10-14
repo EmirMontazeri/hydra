@@ -42,9 +42,9 @@ esac
 # hydra-gui, hydra-cli and hydra-host bin crates this installer bundles.
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 
-# A pre-release (X.Y.Z-rc) ships without official plugins: their bundle is
-# only published with the stable release this would download it from.
-if [[ "$VERSION" != *-* ]]; then
+# A pre-release ships without official plugins, and the bundle this would
+# download is only published with the stable release.
+if [ "${HYDRA_SKIP_OFFICIAL_PLUGINS:-}" != 1 ]; then
   python3 scripts/plugins/stage-official.py --version "$VERSION"
   export HYDRA_OFFICIAL_PLUGIN_DIR="$(pwd)/plugins/bundled"
 fi
