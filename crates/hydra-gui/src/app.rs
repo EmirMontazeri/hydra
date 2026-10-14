@@ -5833,15 +5833,24 @@ impl App {
                 self.list_drag_from_empty = false;
                 self.drag_order = self.visible_ids();
                 if double {
-                    let st = self.item(id).map(|d| d.state);
-                    match st {
-                        // Active transfer: its progress box. Anything else:
-                        // the File Properties dialog.
-                        Some(s) if s.is_active() => {
+                    let target = self.item(id).map(|d| {
+                        (
+                            double_click_action(d.state, d.full_path().is_file()),
+                            d.full_path(),
+                        )
+                    });
+                    match target {
+                        Some((RowOpen::Progress, _)) => {
                             self.sync_prog_state(id);
                             self.open_window(WinKind::Progress(id))
                         }
-                        Some(_) => self.update(Message::Menu(MenuAction::Properties)),
+                        Some((RowOpen::File, path)) => {
+                            let _ = open::that_detached(path);
+                            Task::none()
+                        }
+                        Some((RowOpen::Properties, _)) => {
+                            self.update(Message::Menu(MenuAction::Properties))
+                        }
                         None => Task::none(),
                     }
                 } else {
@@ -8969,6 +8978,25 @@ pub fn find_login<'a>(url: &str, logins: &'a [SiteLogin]) -> Option<&'a SiteLogi
         .max_by_key(|l| l.site.len())
 }
 
+/// What double-clicking a download row opens.
+#[derive(Debug, PartialEq, Eq)]
+enum RowOpen {
+    Progress,
+    File,
+    Properties,
+}
+
+/// A finished download opens its file; an active one its progress box.
+/// Everything else, including a finished download whose file is gone, falls
+/// back to File Properties, which can say what happened.
+fn double_click_action(state: DlState, file_exists: bool) -> RowOpen {
+    match state {
+        s if s.is_active() => RowOpen::Progress,
+        DlState::Complete if file_exists => RowOpen::File,
+        _ => RowOpen::Properties,
+    }
+}
+
 /// Times a click against the one before it, for rows that cannot use
 /// `mouse_area::on_double_click` — a `button` captures the mouse event
 /// before an enclosing area is asked, so the area's own detection never
@@ -11499,6 +11527,26 @@ mod tests {
         // No pattern at all: nothing is blocked.
         assert!(!site_blocked("https://example.com/x.exe", ""));
         assert!(!site_blocked("https://example.com/x.exe", "   "));
+    }
+
+    #[test]
+    fn double_click_opens_finished_file_and_falls_back_to_properties() {
+        assert_eq!(double_click_action(DlState::Complete, true), RowOpen::File);
+        assert_eq!(
+            double_click_action(DlState::Complete, false),
+            RowOpen::Properties
+        );
+        assert_eq!(
+            double_click_action(DlState::Receiving, true),
+            RowOpen::Progress
+        );
+        assert_eq!(
+            double_click_action(DlState::Connecting, false),
+            RowOpen::Progress
+        );
+        for s in [DlState::Queued, DlState::Paused, DlState::Error] {
+            assert_eq!(double_click_action(s, true), RowOpen::Properties);
+        }
     }
 
     #[test]
