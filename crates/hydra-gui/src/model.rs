@@ -157,6 +157,12 @@ pub struct DownloadItem {
     /// renamed back over the file it had just warned about.
     #[serde(default)]
     pub name_locked: bool,
+    /// The name was handed over by the browser extension. The browser had
+    /// already read the server's `Content-Disposition` its own way (Chromium
+    /// decodes `%20` in a plain `filename=`), so a probe that only spells the
+    /// same name with its escapes left in has nothing new to offer.
+    #[serde(default)]
+    pub name_from_browser: bool,
     /// Which proxy this download takes: the app default, none, or its own.
     /// Editable in File Info and, while the transfer is stopped, in the
     /// progress dialog.
@@ -3437,6 +3443,7 @@ mod tests {
             plugin_plan: None,
             metalink: None,
             name_locked: false,
+            name_from_browser: false,
             proxy: ProxyChoice::default(),
         }
     }
