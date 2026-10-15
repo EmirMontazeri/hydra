@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "Spuštění při startu není pro přenosné profily dostupné, aby se zachovala položka po spuštění nainstalované kopie.",
   "Launch minimized to system tray": "Spustit minimalizované do systémové lišty",
   "Let this copy handle browser capture": "Nechat tuto kopii obsluhovat zachytávání z prohlížeče",
+  "Send plugin links to Hydra": "Posílat odkazy pro pluginy do Hydry",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "Odkazy magnet a stránky, které obsluhuje povolený plugin, se otevřou v dialogu Přidat URL v Hydře. Vypnuto je ponechá prohlížeči.",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "Umožňuje Hydře ukládat do libovolné složky bez dotazů pro jednotlivé složky. Přidejte Hydru tlačítkem +, zapněte ji a poté aplikaci restartujte. Pro běžné použití není nutné.",
   "License": "Licence",
   "Light": "Světlý",

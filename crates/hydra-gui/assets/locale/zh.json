@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "为保留已安装副本的启动项，便携配置不支持开机自启动。",
   "Launch minimized to system tray": "启动时最小化到系统托盘",
   "Let this copy handle browser capture": "让此副本处理浏览器捕获",
+  "Send plugin links to Hydra": "将插件链接发送到 Hydra",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "磁力链接和已启用插件处理的页面会在 Hydra 的“添加 URL”对话框中打开。关闭时交给浏览器处理。",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "允许 Hydra 保存到任意文件夹而无需逐个文件夹授权。用 + 按钮添加 Hydra 并开启开关，然后重新启动应用。日常使用无需此权限。",
   "License": "许可证",
   "Light": "浅色",

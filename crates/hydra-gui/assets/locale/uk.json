@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "Автозапуск недоступний для переносних профілів, щоб зберегти запис автозапуску встановленої копії.",
   "Launch minimized to system tray": "Запускати згорнутою в системний трей",
   "Let this copy handle browser capture": "Дозволити цій копії обробляти перехоплення з браузера",
+  "Send plugin links to Hydra": "Передавати посилання плагінів у Hydra",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "Magnet-посилання та сторінки, які обробляє увімкнений плагін, відкриваються у вікні «Додати URL» Hydra. Якщо вимкнено, вони залишаються браузеру.",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "Дозволяє Hydra зберігати файли в будь-яку папку без запитів для кожної папки. Додайте Hydra кнопкою «+», увімкніть перемикач, потім перезапустіть програму. Не є обов'язковим для звичайного використання.",
   "License": "Ліцензія",
   "Light": "Світла",

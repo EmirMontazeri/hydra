@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "Lansarea la pornire nu este disponibilă pentru profilurile portabile, pentru a păstra intrarea de pornire a copiei instalate.",
   "Launch minimized to system tray": "Lansează minimizat în bara de sistem",
   "Let this copy handle browser capture": "Lasă această copie să gestioneze capturarea din browser",
+  "Send plugin links to Hydra": "Trimite linkurile pluginurilor către Hydra",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "Linkurile magnet și paginile gestionate de un plugin activat se deschid în dialogul Adaugă URL din Hydra. Oprit, rămân la browser.",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "Permite Hydra să salveze în orice folder fără solicitări repetate. Adaugă Hydra cu butonul +, activează-l, apoi repornește aplicația. Nu este necesar pentru utilizarea obișnuită.",
   "License": "Licență",
   "Light": "Deschis",

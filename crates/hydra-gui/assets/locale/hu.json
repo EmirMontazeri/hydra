@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "Az indítás bejelentkezéskor nem érhető el hordozható profiloknál, hogy a telepített példány indítási bejegyzése megmaradjon.",
   "Launch minimized to system tray": "Indítás minimalizálva a tálcára",
   "Let this copy handle browser capture": "Ez a másolat kezelje a böngészőből érkező letöltéseket",
+  "Send plugin links to Hydra": "Bővítményhivatkozások küldése a Hydrának",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "A magnet hivatkozások és az engedélyezett bővítmény által kezelt oldalak a Hydra URL hozzáadása ablakában nyílnak meg. Kikapcsolva a böngészőnél maradnak.",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "Lehetővé teszi, hogy a Hydra mappánkénti rákérdezés nélkül mentsen bármely mappába. Adja hozzá a Hydrát a + gombbal, kapcsolja be, majd indítsa újra az alkalmazást. Normál használathoz nem szükséges.",
   "License": "Licenc",
   "Light": "Világos",
