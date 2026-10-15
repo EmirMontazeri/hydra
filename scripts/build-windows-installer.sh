@@ -108,8 +108,11 @@ cd scripts/windows
 # Without a UTF-8 locale, Unicode makensis on macOS dies with std::bad_alloc
 # while writing the output (NSIS bug #1165); non-login shells (CI, editors)
 # often have no LC_ALL set.
+OFFICIAL_PLUGINS_DEFINE=
+[ "${HYDRA_SKIP_OFFICIAL_PLUGINS:-}" = 1 ] || OFFICIAL_PLUGINS_DEFINE=-DOFFICIAL_PLUGINS
 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
   makensis -DARCH="$ARCH" -DVERSION="$VERSION" \
     -DNUM_VERSION="${VERSION%%-*}" -DEXT_VERSION="$EXT_VERSION" \
+    $OFFICIAL_PLUGINS_DEFINE \
     hydra-installer.nsi
 echo "Built: target/hydra-$VERSION-windows-$ARCH-setup.exe"

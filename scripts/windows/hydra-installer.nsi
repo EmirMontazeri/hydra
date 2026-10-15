@@ -198,12 +198,14 @@ instdir_ok:
   SetOutPath "$INSTDIR"
   File "${BUILD_DIR}\hydra-gui.exe"
   File "${BUILD_DIR}\hydra.exe"
+!ifdef OFFICIAL_PLUGINS
   nsExec::ExecToLog '"$INSTDIR\hydra.exe" plugin sync-official --require-bundled'
   Pop $0
   StrCmp $0 "0" official_plugins_ok
   SetErrorLevel 2
   Abort "Official plugin installation failed. See the installation details."
 official_plugins_ok:
+!endif
   File "hydra.ico"
   File "..\..\LICENSE"
 
