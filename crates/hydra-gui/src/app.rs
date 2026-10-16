@@ -8898,7 +8898,8 @@ fn write_capture_extras(
     }
     if let Some(n) = extras.name {
         d.set_file_name(&n);
-        d.name_from_browser = true;
+        // Usable, not "changed": the URL often already yields the browser's name.
+        d.name_from_browser = hya_net::filename::portable(&n).is_some();
         if let Some((cat, dir)) = filing {
             d.category = cat;
             if let Some(dir) = dir {
@@ -14296,5 +14297,55 @@ mod tests {
             MenuAction::from_id(&MenuAction::SortDirection(false).id()),
             Some(MenuAction::SortDirection(false))
         );
+    }
+
+    /// The URL already decodes to the name the browser reports (Moodle's
+    /// `.../My%20File.zip`), so applying the capture changes nothing, and the
+    /// name is still the browser's.
+    #[test]
+    fn a_captured_name_that_matches_the_url_name_is_still_the_browsers() {
+        let mut app = App::default();
+        let id = app.add_item("https://example.com/My%20File.zip".into(), None, None);
+        app.apply_capture_extras(
+            id,
+            CaptureExtras {
+                name: Some("My File.zip".into()),
+                ..CaptureExtras::default()
+            },
+        );
+        let meta = engine::LinkMeta {
+            size: Some(9),
+            file_name: Some("My%20File.zip".into()),
+            is_metalink: false,
+        };
+        let _ = app.update(Message::InfoProbed(id, Some(meta)));
+        assert_eq!(app.item(id).unwrap().file_name, "My File.zip");
+    }
+
+    /// A browser name that cannot be a filename is not applied, so the item
+    /// keeps the name Hydra derived from the URL. That name is not the
+    /// browser's, and a probe's spelling of it must still win.
+    #[test]
+    fn an_unusable_captured_name_leaves_the_probe_in_charge() {
+        let mut app = App::default();
+        let id = app.add_item("https://example.com/My%20File.zip".into(), None, None);
+        app.apply_capture_extras(
+            id,
+            CaptureExtras {
+                name: Some("///".into()),
+                ..CaptureExtras::default()
+            },
+        );
+        let d = app.item(id).unwrap();
+        assert_eq!(d.file_name, "My File.zip");
+        assert!(!d.name_from_browser);
+
+        let meta = engine::LinkMeta {
+            size: Some(9),
+            file_name: Some("My%20File.zip".into()),
+            is_metalink: false,
+        };
+        let _ = app.update(Message::InfoProbed(id, Some(meta)));
+        assert_eq!(app.item(id).unwrap().file_name, "My%20File.zip");
     }
 }
