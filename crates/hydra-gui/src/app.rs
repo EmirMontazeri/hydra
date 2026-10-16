@@ -4140,6 +4140,19 @@ impl App {
 
     fn on_ext_event(&mut self, ev: crate::extbus::ExtEvent) -> Task<Message> {
         match ev {
+            crate::extbus::ExtEvent::Download(dl, ack)
+                if self.cfg.settings.capture_plugin_urls
+                    && crate::plugins::claimed(self, &dl.url) =>
+            {
+                // A `.torrent` link the browser started downloading belongs
+                // to the plugin that claims it, not to a plain HTTP fetch.
+                if ack.confirm() {
+                    self.plugin_capture(dl)
+                } else {
+                    Task::none()
+                }
+            }
+            crate::extbus::ExtEvent::PluginUrl(dl) => self.plugin_capture(dl),
             crate::extbus::ExtEvent::Download(dl, ack) => {
                 // Same flow as a manual Add URL, so duplicate detection,
                 // categorization, and the File Info dialog all behave
@@ -8178,6 +8191,28 @@ impl App {
         let shown: std::collections::HashSet<usize> =
             self.batch_rows().iter().map(|r| r.idx).collect();
         self.batch.sel.retain(|i| shown.contains(i));
+    }
+
+    /// An address a plugin claims, from the browser: the Add URL dialog with
+    /// that plugin's probe running, never a download started on defaults.
+    fn plugin_capture(&mut self, dl: crate::extbus::ExtDownload) -> Task<Message> {
+        crate::log::info(&format!("ext: plugin capture for {}", dl.url));
+        if let Some(ctl) = &self.add_url.plugin_ctl {
+            ctl.cancel();
+        }
+        self.capture_raise = true;
+        self.add_url = AddUrlState {
+            capture: CaptureExtras {
+                cookies: dl.cookies,
+                cookie_source: None,
+                name: None,
+                referer: dl.referer.or(dl.tab_url),
+                proxy: dl.proxy,
+            },
+            ..AddUrlState::default()
+        };
+        let open = self.open_window(WinKind::AddUrl);
+        Task::batch([open, self.update(Message::AddrChanged(dl.url))])
     }
 
     fn on_menu(&mut self, action: MenuAction) -> Task<Message> {
@@ -12929,6 +12964,84 @@ mod tests {
             is_new: false,
             ..FileInfoState::default()
         }
+    }
+
+    #[test]
+    fn a_plugin_address_from_the_browser_opens_add_url_with_the_plugin_probing() {
+        let mut app = App::default();
+        let magnet = "magnet:?xt=urn:btih:abc";
+        let dl = crate::extbus::ExtDownload {
+            url: magnet.into(),
+            tab_url: Some("https://tracker.example/t/1".into()),
+            ..Default::default()
+        };
+        let _ = app.update(Message::Ext(crate::extbus::ExtEvent::PluginUrl(dl)));
+        assert_eq!(app.add_url.address, magnet);
+        assert!(app.add_url.plugin_probing);
+        assert_eq!(
+            app.add_url.capture.referer.as_deref(),
+            Some("https://tracker.example/t/1")
+        );
+        assert!(app.state.downloads.is_empty(), "nothing starts on defaults");
+
+        let first = app.add_url.plugin_ctl.clone().expect("the first probe");
+        let next = "magnet:?xt=urn:btih:def";
+        let dl = crate::extbus::ExtDownload {
+            url: next.into(),
+            ..Default::default()
+        };
+        let _ = app.update(Message::Ext(crate::extbus::ExtEvent::PluginUrl(dl)));
+        assert!(first.is_cancelled(), "a newer link replaces the probe");
+        assert_eq!(app.add_url.address, next);
+        assert!(app.add_url.capture.referer.is_none(), "no stale page");
+    }
+
+    #[test]
+    fn a_captured_download_a_plugin_claims_goes_to_that_plugin() {
+        let url = "https://tracker.example/files/ubuntu.torrent";
+        let capture = |app: &mut App, browser_waits: bool| -> bool {
+            let (ack, receipt) = crate::extbus::Ack::pair();
+            let waiting = browser_waits.then(|| std::thread::spawn(move || receipt.recv().is_ok()));
+            let dl = crate::extbus::ExtDownload {
+                url: url.into(),
+                ..Default::default()
+            };
+            let _ = app.update(Message::Ext(crate::extbus::ExtEvent::Download(dl, ack)));
+            waiting.is_some_and(|w| w.join().unwrap())
+        };
+
+        let mut app = App::default();
+        app.options.plugins.installed = vec![crate::plugins::tests::claiming_plugin(
+            "hydra.torrent",
+            &["*://*/*.torrent"],
+        )];
+        assert!(capture(&mut app, true), "the browser drops its own copy");
+        assert_eq!(app.add_url.address, url);
+        assert!(app.add_url.plugin_probing);
+        assert!(app.state.downloads.is_empty());
+
+        let mut late = App::default();
+        late.options.plugins.installed = app.options.plugins.installed.clone();
+        capture(&mut late, false);
+        assert!(
+            late.add_url.address.is_empty(),
+            "the browser already kept it, so no dialog"
+        );
+
+        let mut disabled = App::default();
+        disabled.options.plugins.installed = app.options.plugins.installed.clone();
+        disabled.options.plugins.installed[0].enabled = false;
+        capture(&mut disabled, true);
+        assert!(!disabled.add_url.plugin_probing, "plain capture path");
+
+        let mut off = App::default();
+        off.options.plugins.installed = app.options.plugins.installed.clone();
+        off.cfg.settings.capture_plugin_urls = false;
+        capture(&mut off, true);
+        assert!(
+            !off.add_url.plugin_probing,
+            "Options turned plugin addresses off"
+        );
     }
 
     #[test]
