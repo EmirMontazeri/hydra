@@ -14321,4 +14321,31 @@ mod tests {
         let _ = app.update(Message::InfoProbed(id, Some(meta)));
         assert_eq!(app.item(id).unwrap().file_name, "My File.zip");
     }
+
+    /// A browser name that cannot be a filename is not applied, so the item
+    /// keeps the name Hydra derived from the URL. That name is not the
+    /// browser's, and a probe's spelling of it must still win.
+    #[test]
+    fn an_unusable_captured_name_leaves_the_probe_in_charge() {
+        let mut app = App::default();
+        let id = app.add_item("https://example.com/My%20File.zip".into(), None, None);
+        app.apply_capture_extras(
+            id,
+            CaptureExtras {
+                name: Some("///".into()),
+                ..CaptureExtras::default()
+            },
+        );
+        let d = app.item(id).unwrap();
+        assert_eq!(d.file_name, "My File.zip");
+        assert!(!d.name_from_browser);
+
+        let meta = engine::LinkMeta {
+            size: Some(9),
+            file_name: Some("My%20File.zip".into()),
+            is_metalink: false,
+        };
+        let _ = app.update(Message::InfoProbed(id, Some(meta)));
+        assert_eq!(app.item(id).unwrap().file_name, "My%20File.zip");
+    }
 }
