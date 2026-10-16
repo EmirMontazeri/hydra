@@ -1025,6 +1025,12 @@ pub struct BatchState {
     /// Where a Shift-click measures its run from. Held across clicks, so
     /// shrinking a range by Shift-clicking nearer the anchor works.
     pub sel_anchor: Option<usize>,
+    /// The moving end of a keyboard run; Shift+arrows extend from `sel_anchor`
+    /// to here.
+    pub sel_cursor: Option<usize>,
+    /// Scroll offset and height of the table body, kept to scroll the cursor
+    /// row into view.
+    pub scroll: (f32, f32),
 }
 
 impl Default for BatchState {
@@ -1047,6 +1053,8 @@ impl Default for BatchState {
             sort: None,
             sel: Default::default(),
             sel_anchor: None,
+            sel_cursor: None,
+            scroll: (0.0, 0.0),
             hide_html: false,
             // A duplicate never adds a second download, so hiding it is the
             // sensible default — the same one  ships with.
@@ -1518,6 +1526,7 @@ pub enum Message {
     /// A click anywhere on a batch row but its checkbox: selects it, and
     /// extends or toggles the selection under Shift / Cmd-Ctrl.
     BatchRowClick(usize),
+    BatchScrolled(f32, f32),
     /// Check or uncheck every highlighted row.
     BatchCheckSel(bool),
     BatchSaveMode(u8),
@@ -2046,6 +2055,89 @@ impl App {
     }
 
     /// The batch dialog's table, filtered and ordered as shown.
+    /// Keyboard selection in the batch table: Shift+Up/Down/PageUp/PageDown/
+    /// Home/End extend the run from the anchor, the same keys alone move it,
+    /// and Space checks the highlighted rows (or unchecks them when all are
+    /// already checked). `None` leaves the key to the rest of the app.
+    fn batch_key(
+        &mut self,
+        key: &iced::keyboard::Key,
+        mods: iced::keyboard::Modifiers,
+    ) -> Option<Task<Message>> {
+        use iced::keyboard::key::Named;
+        let iced::keyboard::Key::Named(named) = key else {
+            return None;
+        };
+        if mods.command() || mods.alt() {
+            return None;
+        }
+        let order: Vec<usize> = self.batch_rows().iter().map(|r| r.idx).collect();
+        if *named == Named::Space {
+            if self.batch.sel.is_empty() {
+                return None;
+            }
+            let all_on = self
+                .batch
+                .sel
+                .iter()
+                .all(|i| self.batch.checks.get(*i).is_some_and(|c| c.1));
+            return Some(self.update(Message::BatchCheckSel(!all_on)));
+        }
+        if order.is_empty() {
+            return None;
+        }
+        let last = order.len() - 1;
+        let at = self
+            .batch
+            .sel_cursor
+            .and_then(|c| order.iter().position(|x| *x == c));
+        let to = match named {
+            Named::ArrowUp => at.map_or(last, |p| p.saturating_sub(1)),
+            Named::ArrowDown => at.map_or(0, |p| (p + 1).min(last)),
+            Named::PageUp => at.map_or(0, |p| p.saturating_sub(self.batch_page_rows())),
+            Named::PageDown => at.map_or(0, |p| (p + self.batch_page_rows()).min(last)),
+            Named::Home => 0,
+            Named::End => last,
+            _ => return None,
+        };
+        let target = order[to];
+        let anchor = if mods.shift() {
+            self.batch
+                .sel_anchor
+                .filter(|a| order.contains(a))
+                .unwrap_or_else(|| at.map_or(target, |p| order[p]))
+        } else {
+            target
+        };
+        let a = order.iter().position(|x| *x == anchor).unwrap_or(to);
+        self.batch.sel = order[a.min(to)..=a.max(to)].iter().copied().collect();
+        self.batch.sel_anchor = Some(anchor);
+        self.batch.sel_cursor = Some(target);
+
+        let (offset, height) = self.batch.scroll;
+        let top = to as f32 * crate::windows::batch::ROW_PITCH;
+        let bottom = top + crate::windows::batch::ROW_PITCH;
+        let want = if top < offset {
+            top
+        } else if height > 0.0 && bottom > offset + height {
+            bottom - height
+        } else {
+            return Some(Task::none());
+        };
+        Some(iced::widget::operation::scroll_to(
+            crate::windows::batch::LIST_ID,
+            iced::widget::scrollable::AbsoluteOffset::<Option<f32>> {
+                x: None,
+                y: Some(want),
+            },
+        ))
+    }
+
+    fn batch_page_rows(&self) -> usize {
+        let rows = (self.batch.scroll.1 / crate::windows::batch::ROW_PITCH) as usize;
+        rows.saturating_sub(1).max(1)
+    }
+
     pub fn batch_rows(&self) -> Vec<BatchRow> {
         let st = &self.batch;
         batch_rows(
@@ -5899,6 +5991,11 @@ impl App {
                 Task::none()
             }
             Message::RawKey(key, mods, win) => {
+                if self.windows.get(&win) == Some(&WinKind::Batch) {
+                    if let Some(task) = self.batch_key(&key, mods) {
+                        return task;
+                    }
+                }
                 if key == iced::keyboard::Key::Named(iced::keyboard::key::Named::Delete)
                     && mods.is_empty()
                     && self.windows.get(&win) == Some(&WinKind::Main)
@@ -7645,6 +7742,7 @@ impl App {
                         self.batch.sel.insert(i);
                     }
                     self.batch.sel_anchor = Some(i);
+                    self.batch.sel_cursor = Some(i);
                     return Task::none();
                 }
                 let order: Vec<usize> = self.batch_rows().iter().map(|r| r.idx).collect();
@@ -7666,11 +7764,17 @@ impl App {
                     if let (Some(a), Some(b)) = (a, b) {
                         self.batch.sel = order[a.min(b)..=a.max(b)].iter().copied().collect();
                         self.batch.sel_anchor = Some(anchor);
+                        self.batch.sel_cursor = Some(i);
                     }
                     return Task::none();
                 }
                 self.batch.sel = std::iter::once(i).collect();
                 self.batch.sel_anchor = Some(i);
+                self.batch.sel_cursor = Some(i);
+                Task::none()
+            }
+            Message::BatchScrolled(offset, height) => {
+                self.batch.scroll = (offset, height);
                 Task::none()
             }
             Message::BatchCheckSel(b) => {
@@ -10409,6 +10513,90 @@ mod tests {
         );
         let _ = app.update(Message::BatchCheckSel(false));
         assert!(checked(&app).is_empty());
+    }
+
+    /// Shift+arrows extend a run from the anchor in table order, a plain
+    /// arrow collapses it, and Space checks or unchecks the whole run.
+    #[test]
+    fn keyboard_extends_and_checks_the_selection() {
+        use iced::keyboard::{key::Named, Key, Modifiers};
+        let mut app = App::default();
+        let win = window::Id::unique();
+        app.windows.insert(win, WinKind::Batch);
+        app.batch.checks = (0..30)
+            .map(|i| (format!("https://a.b/f{i:02}.zip"), false))
+            .collect();
+        app.batch.parsed = true;
+        app.batch.scroll = (0.0, 250.0);
+        let press = |app: &mut App, k: Named, m: Modifiers| {
+            let _ = app.update(Message::RawKey(Key::Named(k), m, win));
+        };
+
+        let _ = app.update(Message::BatchRowClick(2));
+        press(&mut app, Named::ArrowDown, Modifiers::SHIFT);
+        press(&mut app, Named::ArrowDown, Modifiers::SHIFT);
+        assert_eq!(sel(&app), vec![2, 3, 4]);
+        press(&mut app, Named::ArrowUp, Modifiers::SHIFT);
+        assert_eq!(sel(&app), vec![2, 3], "backing up shrinks the run");
+
+        press(&mut app, Named::Space, Modifiers::empty());
+        assert_eq!(checked(&app).len(), 2);
+        press(&mut app, Named::Space, Modifiers::empty());
+        assert!(checked(&app).is_empty(), "all checked, so Space unchecks");
+
+        press(&mut app, Named::PageDown, Modifiers::SHIFT);
+        assert_eq!(
+            sel(&app).len(),
+            2 + 9,
+            "a page is the visible rows less one"
+        );
+        press(&mut app, Named::End, Modifiers::SHIFT);
+        assert_eq!(sel(&app), (2..30).collect::<Vec<_>>());
+        press(&mut app, Named::Home, Modifiers::SHIFT);
+        assert_eq!(sel(&app), vec![0, 1, 2]);
+
+        press(&mut app, Named::ArrowDown, Modifiers::empty());
+        assert_eq!(sel(&app), vec![1], "no Shift moves a single highlight");
+
+        press(&mut app, Named::ArrowDown, Modifiers::SHIFT);
+        let sorted = sel(&app);
+        app.batch.sort = Some((BatchSortKey::Name, false));
+        let _ = app.update(Message::BatchRowClick(5));
+        press(&mut app, Named::ArrowDown, Modifiers::SHIFT);
+        assert_eq!(sel(&app), vec![4, 5], "follows the table's sort order");
+        assert_ne!(sorted, sel(&app));
+    }
+
+    /// Space with nothing highlighted, and keys in other windows, do nothing
+    /// to the batch.
+    #[test]
+    fn keyboard_selection_ignores_empty_selection_and_other_windows() {
+        use iced::keyboard::{key::Named, Key, Modifiers};
+        let mut app = App::default();
+        let win = window::Id::unique();
+        let other = window::Id::unique();
+        app.windows.insert(win, WinKind::Batch);
+        app.windows.insert(other, WinKind::Main);
+        app.batch.checks = vec![("https://a.b/x.zip".into(), false)];
+        app.batch.parsed = true;
+        let _ = app.update(Message::RawKey(
+            Key::Named(Named::Space),
+            Modifiers::empty(),
+            win,
+        ));
+        assert!(checked(&app).is_empty());
+        let _ = app.update(Message::RawKey(
+            Key::Named(Named::End),
+            Modifiers::SHIFT,
+            other,
+        ));
+        assert!(sel(&app).is_empty());
+        let _ = app.update(Message::RawKey(
+            Key::Named(Named::End),
+            Modifiers::SHIFT,
+            win,
+        ));
+        assert_eq!(sel(&app), vec![0]);
     }
 
     /// Cmd/Ctrl-click adds and removes one row at a time, leaving the rest of

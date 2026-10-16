@@ -27,7 +27,7 @@ clap = { workspace = true }
 # every platform so the mock-flow tests exercise both formats everywhere.
 flate2 = "1"
 tar = "0.4"
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Same feature-unification note as hydra-gui/hydra-cli: MSVC's arm64_neon.h

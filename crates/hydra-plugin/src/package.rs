@@ -169,7 +169,10 @@ pub fn open(bytes: &[u8], expected_sha256: Option<&str>) -> Result<Package, Pack
         let f = zip
             .by_index_raw(i)
             .map_err(|e| PackageError(format!("entry {i}: {e}")))?;
-        let name = f.name().to_string();
+        let name = f
+            .name()
+            .map_err(|e| PackageError(format!("entry {i}: {e}")))?
+            .into_owned();
         valid_entry_name(&name)?;
         if f.is_dir() || f.is_symlink() || f.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000) {
             return refuse(format!("entry `{name}` is a directory or link"));

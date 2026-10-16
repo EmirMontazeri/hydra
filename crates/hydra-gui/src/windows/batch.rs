@@ -27,6 +27,10 @@ const SIZE_W: f32 = 84.0;
 const SAVE_W: f32 = 200.0;
 const CELL_H: f32 = 24.0;
 
+/// A row plus the 1 px gap under it, which is what keyboard scrolling steps by.
+pub const ROW_PITCH: f32 = CELL_H + 1.0;
+pub const LIST_ID: &str = "batch-list";
+
 /// The sortable columns after the checkbox strip. `None` width is the
 /// source column, which takes whatever is left.
 const COLS: [(&str, Option<f32>, BatchSortKey); 5] = [
@@ -79,7 +83,10 @@ pub fn view(app: &App) -> El<'_> {
     let table = column![
         header(st, &rows),
         hairline(),
-        crate::ui::scroll(list).height(Length::Fill),
+        crate::ui::scroll(list)
+            .id(LIST_ID)
+            .on_scroll(|v| Message::BatchScrolled(v.absolute_offset().y, v.bounds().height))
+            .height(Length::Fill),
     ];
 
     let cats: Vec<String> = app.cfg.categories.iter().map(|c| c.name.clone()).collect();
