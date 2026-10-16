@@ -24,7 +24,7 @@ hya-plugin = { path = "../hydra-plugin" }
 hya-plugin-api = { path = "../hydra-plugin-api" }
 tempfile = "3"
 minisign = "0.9.1"
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 [dev-dependencies]
 wat = "1"
 [lints]

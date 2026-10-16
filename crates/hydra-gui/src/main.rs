@@ -533,6 +533,13 @@ fn subscription_event(
                             | iced::keyboard::key::Named::Enter
                             | iced::keyboard::key::Named::F4
                             | iced::keyboard::key::Named::Delete
+                            | iced::keyboard::key::Named::Space
+                            | iced::keyboard::key::Named::ArrowUp
+                            | iced::keyboard::key::Named::ArrowDown
+                            | iced::keyboard::key::Named::PageUp
+                            | iced::keyboard::key::Named::PageDown
+                            | iced::keyboard::key::Named::Home
+                            | iced::keyboard::key::Named::End
                     )
                 )) =>
         {

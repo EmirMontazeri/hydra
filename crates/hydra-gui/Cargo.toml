@@ -200,7 +200,7 @@ aes = { workspace = true }
 cbc = { workspace = true }
 # Writes the archive the Zip-preview end-to-end test serves back over a local
 # socket: real archiver output rather than bytes laid out by the code under test.
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 # The render harness in src/render_check.rs: drives the real views through
 # iced's UserInterface and rasterizes with tiny-skia the way the software
 # compositor does, damage included — no window, no GPU.
