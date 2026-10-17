@@ -377,12 +377,24 @@ use_fallback_libs() {
     *) abi='' ;;
   esac
   cache=$(PATH="$PATH:/sbin:/usr/sbin" ldconfig -p 2>/dev/null || true)
+  # The bundled libxkbcommon-x11 is built against the bundled libxkbcommon and
+  # crashes on a host's, so a host that lacks the former takes both.
+  case "$cache" in
+    *"libxkbcommon-x11.so.0 ($abi"*) take_xkbcommon=false ;;
+    *) take_xkbcommon=true ;;
+  esac
   for dir in "$HERE"/usr/lib/fallback/*; do
     [ -d "$dir" ] || continue
+    name=${dir##*/}
     case "$cache" in
-      *"${dir##*/} ($abi"*) ;;
-      *) LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+      *"$name ($abi"*) on_host=true ;;
+      *) on_host=false ;;
     esac
+    if [ "$name" = libxkbcommon.so.0 ] && [ "$take_xkbcommon" = true ]; then
+      on_host=false
+    fi
+    [ "$on_host" = true ] && continue
+    LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   done
   if [ -n "${LD_LIBRARY_PATH:-}" ]; then
     export LD_LIBRARY_PATH
