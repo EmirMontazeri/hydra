@@ -13,6 +13,9 @@
 // are never re-requested. Gecko has none of this — see firefox/background.js.
 importScripts("core.js");
 
+
+globalThis.PLUGIN_HOSTS_WITHHELD = ["youtube.com", "youtu.be"];
+
 // The cheap half of `offerToHydra`'s gates: what can be decided without asking
 // the app anything, which is all parking is allowed to cost.
 function captureEligible(item, state) {
