@@ -3828,7 +3828,7 @@ impl App {
                 .unwrap_or_else(|| model::DEFAULT_CATEGORY.into()),
             save_dir: d.save_dir.clone(),
             file_name: d.file_name.clone(),
-            description: String::new(),
+            description: d.description.clone(),
             // Off by default: an edited Save As folder applies to this one
             // download. Only an explicit tick writes it back to the category.
             remember: false,
@@ -8995,6 +8995,9 @@ fn write_capture_extras(
         );
     }
     if let Some(r) = extras.referer {
+        if d.description.trim().is_empty() {
+            d.description = r.clone();
+        }
         d.referer = Some(r);
     }
     if let Some(p) = captured_proxy(extras.proxy) {
@@ -11588,6 +11591,42 @@ mod tests {
         };
         let _ = adopt_dialog_edits(&mut d, &fi);
         assert_eq!(d.file_name, "report_ final_.pdf");
+    }
+
+    #[test]
+    fn a_captured_source_page_prefills_the_notes_without_overwriting_them() {
+        let page = || CaptureExtras {
+            referer: Some("https://page.example/releases".into()),
+            ..CaptureExtras::default()
+        };
+        let mut d = item(1, "/downloads", "pack.zip", None, DlState::Queued);
+        write_capture_extras(&mut d, page(), None);
+        assert_eq!(d.description, "https://page.example/releases");
+
+        d.description = "my own note".into();
+        write_capture_extras(&mut d, page(), None);
+        assert_eq!(d.description, "my own note");
+
+        let mut bare = item(2, "/downloads", "b.zip", None, DlState::Queued);
+        write_capture_extras(&mut bare, CaptureExtras::default(), None);
+        assert!(bare.description.is_empty());
+    }
+
+    #[test]
+    fn the_new_download_dialog_shows_the_captured_source_page() {
+        let mut app = App::default();
+        let id = app.add_item("https://cdn.example.com/f.zip".into(), None, None);
+        app.apply_capture_extras(
+            id,
+            CaptureExtras {
+                referer: Some("https://page.example/".into()),
+                ..CaptureExtras::default()
+            },
+        );
+        assert_eq!(
+            app.file_info_for_new(id).description,
+            "https://page.example/"
+        );
     }
 
     #[test]
