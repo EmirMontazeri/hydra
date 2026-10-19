@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "설치된 복사본의 시작 항목을 유지하기 위해 포터블 프로필에서는 자동 시작을 사용할 수 없습니다.",
   "Launch minimized to system tray": "시스템 트레이에 최소화된 상태로 실행",
   "Let this copy handle browser capture": "이 사본이 브라우저 캡처를 처리하도록 허용",
+  "Send plugin links to Hydra": "플러그인 링크를 Hydra로 보내기",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "마그넷 링크와 활성화된 플러그인이 처리하는 페이지를 Hydra의 URL 추가 대화 상자에서 엽니다. 끄면 브라우저에 맡깁니다.",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "폴더별 확인 프롬프트 없이 모든 폴더에 저장할 수 있습니다. + 버튼으로 Hydra를 추가하고 켠 다음 앱을 재시작하십시오(일반적인 용도에는 필요하지 않음).",
   "License": "라이선스",
   "Light": "밝은",

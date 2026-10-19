@@ -177,6 +177,9 @@ pub enum ExtEvent {
     Download(ExtDownload, Ack),
     /// A manifest -> the stream-aware download path.
     Stream(Box<ExtStream>),
+    /// An address an enabled plugin claims -> the Add URL dialog, probed by
+    /// that plugin, so its choices are made there instead of defaulted.
+    PluginUrl(ExtDownload),
     /// "Download all links": many URLs -> the batch window.
     Links(Vec<String>),
     /// Popup's "Open Hydra": surface the main window.
@@ -207,11 +210,24 @@ pub struct ExtConfig {
     /// Extension origins admitted to the WebSocket without the token.
     #[serde(skip)]
     pub allowed: Vec<String>,
+    /// Options > Extensions: plugin addresses are handed over at all.
+    #[serde(skip)]
+    pub plugin_urls: bool,
+}
+
+/// An enabled plugin's address claims, mirrored to the extension so it can
+/// offer the plugin on the pages and links that plugin handles.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ExtPlugin {
+    pub id: String,
+    pub name: String,
+    pub claims: Vec<String>,
 }
 
 static TX: OnceLock<UnboundedSender<ExtEvent>> = OnceLock::new();
 static RX: Mutex<Option<UnboundedReceiver<ExtEvent>>> = Mutex::new(None);
 static CFG: Mutex<Option<ExtConfig>> = Mutex::new(None);
+static PLUGINS: Mutex<Vec<ExtPlugin>> = Mutex::new(Vec::new());
 
 fn sender() -> UnboundedSender<ExtEvent> {
     TX.get_or_init(|| {
@@ -258,10 +274,42 @@ pub fn publish_config(cfg: &crate::model::ConfigFile) {
         dont_start_sites: cfg.settings.dont_start_sites.clone(),
         browsers,
         allowed: cfg.settings.allowed_extensions.clone(),
+        plugin_urls: cfg.settings.capture_plugin_urls,
     };
     if let Ok(mut g) = CFG.lock() {
         *g = Some(snap);
     }
+}
+
+/// UI thread pushes the enabled plugins, in resolver order, whenever the
+/// installed list is (re)loaded.
+pub fn publish_plugins(installed: &[hya_plugin::manager::Installed]) {
+    let plugins = installed
+        .iter()
+        .filter(|p| p.enabled && !p.manifest.claims.is_empty())
+        .map(|p| ExtPlugin {
+            id: p.manifest.id.clone(),
+            name: p.manifest.name.clone(),
+            claims: p.manifest.claims.clone(),
+        })
+        .collect();
+    if let Ok(mut g) = PLUGINS.lock() {
+        *g = plugins;
+    }
+}
+
+/// The plugins the extension may offer: none while Options turns it off.
+fn plugins_snapshot(cfg: &ExtConfig) -> Vec<ExtPlugin> {
+    if !cfg.plugin_urls {
+        return Vec::new();
+    }
+    PLUGINS.lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+fn plugin_claims(plugins: &[ExtPlugin], url: &str) -> bool {
+    plugins.iter().flat_map(|p| &p.claims).any(|claim| {
+        hya_plugin::matcher::UrlPattern::parse(claim).is_ok_and(|pattern| pattern.matches(url))
+    })
 }
 
 /// Browsers that have spoken to us recently, by the label Options shows.
@@ -655,6 +703,19 @@ fn dispatch(req: &serde_json::Value, allowed: bool) -> serde_json::Value {
             }
             _ => (false, Some("bad stream request")),
         },
+        Some("plugin-url") => match serde_json::from_value::<ExtDownload>(req.clone()) {
+            Ok(dl) if plugin_claims(&plugins_snapshot(&config_snapshot()), &dl.url) => {
+                crate::log::info(&format!(
+                    "extbus: plugin address {} (from={})",
+                    dl.url,
+                    dl.tab_url.as_deref().unwrap_or("-"),
+                ));
+                let _ = sender().send(ExtEvent::PluginUrl(dl));
+                (true, None)
+            }
+            Ok(_) => (false, Some("no enabled plugin claims this address")),
+            _ => (false, Some("bad plugin-url request")),
+        },
         Some("links") => {
             let urls: Vec<String> = req
                 .get("urls")
@@ -689,6 +750,7 @@ fn dispatch(req: &serde_json::Value, allowed: bool) -> serde_json::Value {
         "capture": capture_for(&cfg, browser),
         "auto_types": cfg.auto_types,
         "dont_start_sites": cfg.dont_start_sites,
+        "plugins": plugins_snapshot(&cfg),
         "version": env!("CARGO_PKG_VERSION"),
     });
     if let Some(e) = err {
@@ -1129,6 +1191,48 @@ mod tests {
                 true
             )));
         }
+
+        let magnet = serde_json::json!({"type":"plugin-url", "url":"magnet:?xt=urn:btih:abc"});
+        let mut torrent = crate::plugins::tests::claiming_plugin("hydra.torrent", &["magnet:*"]);
+        publish_plugins(&[]);
+        assert!(!ok(dispatch(&magnet, true)), "nothing installed claims it");
+        torrent.enabled = false;
+        publish_plugins(std::slice::from_ref(&torrent));
+        assert!(
+            !ok(dispatch(&magnet, true)),
+            "a disabled plugin claims nothing"
+        );
+        torrent.enabled = true;
+        publish_plugins(&[torrent]);
+        let set_plugin_urls = |on: bool| {
+            let mut g = CFG.lock().unwrap();
+            g.get_or_insert_with(ExtConfig::default).plugin_urls = on;
+        };
+        set_plugin_urls(false);
+        let reply = dispatch(&magnet, true);
+        assert!(!ok(reply.clone()), "Options turned plugin addresses off");
+        assert_eq!(reply["plugins"], serde_json::json!([]));
+        set_plugin_urls(true);
+        let reply = dispatch(&magnet, false);
+        assert!(
+            ok(reply.clone()),
+            "a tokenless extension may hand over an address"
+        );
+        assert_eq!(reply["plugins"][0]["id"], "hydra.torrent");
+        assert_eq!(reply["plugins"][0]["claims"][0], "magnet:*");
+        let Some(ExtEvent::PluginUrl(dl)) = rx.blocking_recv() else {
+            panic!("plugin address event expected")
+        };
+        assert_eq!(dl.url, "magnet:?xt=urn:btih:abc");
+        assert!(!ok(dispatch(
+            &serde_json::json!({"type":"plugin-url", "url":"https://example.com/page"}),
+            true
+        )));
+        assert!(!ok(dispatch(
+            &serde_json::json!({"type":"plugin-url"}),
+            true
+        )));
+        publish_plugins(&[]);
     }
 
     /// The other half of the same contract: once the socket thread has

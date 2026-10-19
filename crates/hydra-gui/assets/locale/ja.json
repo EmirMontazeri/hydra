@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "インストール済みコピーの自動起動設定を保持するため、ポータブルプロファイルでは自動起動を利用できません。",
   "Launch minimized to system tray": "システムトレイに最小化して起動",
   "Let this copy handle browser capture": "このコピーでブラウザーからの取り込みを処理する",
+  "Send plugin links to Hydra": "プラグインのリンクを Hydra に送る",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "マグネットリンクや有効なプラグインが扱うページを Hydra の「URL を追加」ダイアログで開きます。オフにするとブラウザーに任せます。",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "フォルダごとの確認なしに任意のフォルダへ保存できるようになります。+ ボタンで Hydra を追加してオンにし、アプリを再起動してください（通常使用では不要です）。",
   "License": "ライセンス",
   "Light": "ライト",

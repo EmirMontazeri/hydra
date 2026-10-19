@@ -229,6 +229,8 @@
   "Launch on startup is unavailable for portable profiles to preserve the installed copy's startup entry.": "El inicio automático no está disponible para perfiles portátiles para conservar la entrada de inicio de la copia instalada.",
   "Launch minimized to system tray": "Iniciar minimizado en la bandeja del sistema",
   "Let this copy handle browser capture": "Dejar que esta copia gestione la captura del navegador",
+  "Send plugin links to Hydra": "Enviar enlaces de plugins a Hydra",
+  "Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser.": "Los enlaces magnet y las páginas que gestiona un plugin activado se abren en el diálogo Añadir URL de Hydra. Desactivado, se dejan al navegador.",
   "Lets Hydra save into any folder without per-folder prompts. Add Hydra with the + button, switch it on, then relaunch the app. Not required for normal use.": "Permite a Hydra guardar en cualquier carpeta sin solicitudes individuales. Añada Hydra con el botón +, actívelo y reinicie la app. No es necesario para uso normal.",
   "License": "Licencia",
   "Light": "Claro",

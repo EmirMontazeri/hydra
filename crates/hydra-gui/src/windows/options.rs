@@ -614,6 +614,7 @@ impl OptionsState {
             OptField::GpuRender(b) => s.gpu_render = b,
             OptField::Clipboard(b) => s.monitor_clipboard = b,
             OptField::PortableCapture(b) => s.portable_capture = b,
+            OptField::CapturePluginUrls(b) => s.capture_plugin_urls = b,
             OptField::Untrust(i) => {
                 if i < s.allowed_extensions.len() {
                     s.allowed_extensions.remove(i);
@@ -1630,6 +1631,11 @@ fn extensions(app: &App) -> El<'_> {
             tr("Not on store yet"),
             None,
         ),
+        hinted(
+            check(app.options.draft.capture_plugin_urls, tr("Send plugin links to Hydra"))
+                .on_toggle(|b| o(OptField::CapturePluginUrls(b))),
+            tr("Magnet links and pages an enabled plugin handles open in Hydra's Add URL dialog. Off leaves them to the browser."),
+        ),
     ]
     .spacing(10);
     let allowed = &app.options.draft.allowed_extensions;
@@ -1923,6 +1929,7 @@ mod tests {
             BetaChannel => beta_channel, StartInTray => start_in_tray, CloseToTray => close_to_tray,
             PowerSave => power_save, GpuRender => gpu_render, Clipboard => monitor_clipboard,
             PortableCapture => portable_capture, RememberLast => remember_last_dir,
+            CapturePluginUrls => capture_plugin_urls,
             ServerDate => server_file_date, NoCatDirs => no_category_dirs,
             ShowFileInfo => show_file_info_dialog, BgDownload => bg_download,
             StartMinimized => start_minimized, SpeedTab => show_speed_tab,

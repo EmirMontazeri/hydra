@@ -21,7 +21,7 @@ const api = new Function(
   "location",
   code +
     "return { buildRows, pageTitle, playingSrc, set: (p) => (pageItems = p) };"
-)({ title: "Free HLS Player - Online M3U8 Player & Stream Tester | Castr" }, { hostname: "castr.com" });
+)({ title: "Free HLS Player - Online M3U8 Player & Stream Tester | Castr" }, { hostname: "castr.com", href: "https://castr.com/hlsplayer/" });
 
 let fails = 0;
 const eq = (label, got, want) => {
@@ -170,6 +170,12 @@ eq("a direct file downloads by URL", api.buildRows()[0].kind, "media");
   const un = api.buildRows("https://a.ex/other/voice.wav");
   eq("an unsniffed file is still offered", un.length, 1);
   eq("with its type read off the name", un[0].label, "voice.wav · WAV");
+
+  // A plugin claiming the page outranks what the sniffer caught: on YouTube
+  // those are fragments of a stream, never a file worth offering.
+  const claimed = api.buildRows("https://a.ex/s/sample-12s.mp3", { id: "x", name: "Example Video" });
+  eq("a claimed page offers its plugin alone", claimed.map((r) => r.kind), ["plugin"]);
+  eq("for the page itself", claimed[0].url, "https://castr.com/hlsplayer/");
 }
 
 // ---- what counts as "playing a file" ------------------------------------
@@ -210,9 +216,9 @@ eq(
   1
 );
 eq(
-  "both the pill and the video panel draw that one mark",
+  "the pill, the video panel and the plugin button draw that one mark",
   (src.match(/brandIcon\(\)/g) || []).length,
-  3 // the definition, plus one call from each panel
+  4 // the definition, plus one call from each
 );
 for (const shade of ["#1c3a1e", "linear-gradient(#fdfdfd, #e8efe8)", "#9db89f"]) {
   eq(

@@ -1,13 +1,15 @@
 // Copyright (C) 2026 Javad Rajabzadeh
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Content script, three jobs:
+// Content script, four jobs:
 //  1. Stamp Alt+clicks so the background honors the "hold Alt to let the
 //     browser download normally" convention, and on Gecko perform that
 //     download, because Firefox itself will not.
 //  2. Collect page links for "Download all links with Hydra".
 //  3. The selection pill: highlight one or more links and a floating
 //     "Download with Hydra" button appears next to the selection.
+//  4. Plugin hand-off: a button on a page an enabled Hydra plugin claims,
+//     and clicks on links of a scheme a plugin owns (magnet:).
 
 window.addEventListener(
   "mousedown",
@@ -410,9 +412,13 @@ function playingSrc(el) {
 /// the one thing the list exists to choose between was the one thing that
 /// could not be read. The title names the file Hydra saves, so it is shown
 /// once at the head of the menu instead of once per row.
-function buildRows(playing) {
+function buildRows(playing, plugin = null) {
   const title = pageTitle();
   const rows = [];
+
+  // A plugin that claims the page knows what is playing better than the
+  // sniffer, which on a site like YouTube only catches fragments of a stream.
+  if (plugin) return [{ kind: "plugin", url: location.href, label: plugin.name }];
 
   // A player that is playing ONE file has already answered the question, so
   // the panel offers THAT file rather than everything the page holds. On a
@@ -538,6 +544,7 @@ function panelMedia() {
 }
 
 function sendRow(row, done) {
+  if (row.kind === "plugin") return handToPlugin(row.url, (r) => done && done(r));
   const msg =
     row.kind === "stream"
       ? {
@@ -797,8 +804,8 @@ function buildPanel() {
 /// read from `panelTarget`, which showPanel only assigns AFTER this returns.
 function renderRows(el) {
   panelList.textContent = "";
-  panelRows = buildRows(playingSrc(el));
-  const drm = pageItems.streams.filter((s) => s.drm);
+  panelRows = buildRows(playingSrc(el), pluginPage);
+  const drm = pluginPage ? [] : pageItems.streams.filter((s) => s.drm);
   if (!panelRows.length && !drm.length) return false;
   // One row and nothing to explain: the bar downloads it on click, so the
   // dropdown and its caret would be a menu with a single item in it.
@@ -959,13 +966,26 @@ async function refreshPageItems() {
   }
 }
 
+/// The player beneath a pointer that landed on the site's own overlay. Only
+/// on a plugin-claimed page: YouTube covers its <video> with control layers,
+/// so the hover never reaches the element itself.
+function playerUnder(e) {
+  if (!pluginPage || (pluginButtonHost && e.target === pluginButtonHost)) return null;
+  const v = panelMedia();
+  if (!v) return null;
+  const r = v.getBoundingClientRect();
+  const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  return inside ? v : null;
+}
+
 // Hovering a player is the trigger, the way a selection is the pill's.
 // Delegated, so players created later are covered without a rescan.
 document.addEventListener(
   "pointerover",
   (e) => {
     const v =
-      e.target instanceof Element ? e.target.closest("video, audio") : null;
+      (e.target instanceof Element ? e.target.closest("video, audio") : null) ||
+      playerUnder(e);
     if (v) {
       if (playerBigEnough(v)) showPanel(v);
     } else if (panelTarget && e.target !== panelHost) {
@@ -988,6 +1008,7 @@ document.addEventListener(
         showPanel(v);
         schedulePanelHide();
       }
+      renderPluginButton();
     });
   },
   true
@@ -1064,6 +1085,126 @@ document.addEventListener("fullscreenchange", () => {
   if (document.fullscreenElement) hidePanel();
 });
 
+// ---------------------------------------------------------- plugin hand-off
+
+let pluginLinkSchemes = [];
+let pluginPage = null; // { id, name } of the plugin claiming this page
+let pluginButtonHost = null;
+let pluginButtonLabel = null;
+const pluginDismissed = new Set(); // page addresses the button was closed on
+
+// The link a plain click on a plugin-owned scheme asks for, or null. Alt keeps
+// its meaning everywhere else in this script: the browser's own handling.
+function pluginLinkUrl(e, schemes) {
+  if (e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.defaultPrevented) {
+    return null;
+  }
+  const href = e.target?.closest?.("a[href]")?.href;
+  if (!href) return null;
+  const scheme = href.slice(0, href.indexOf(":")).toLowerCase();
+  return schemes.includes(scheme) ? href : null;
+}
+
+function handToPlugin(url, done) {
+  try {
+    chrome.runtime.sendMessage({ type: "plugin-url", url, referer: location.href }, done);
+  } catch {
+    done(null);
+  }
+}
+
+window.addEventListener("click", (e) => {
+  const url = pluginLinkUrl(e, pluginLinkSchemes);
+  if (!url) return;
+  e.preventDefault();
+  // Hydra not running or the plugin gone: the link still goes to whichever
+  // app the system has for it, as if the extension were not here.
+  handToPlugin(url, (r) => {
+    if (!r || !r.ok) location.assign(url);
+  });
+});
+
+function buildPluginButton() {
+  pluginButtonHost = document.createElement("div");
+  const shadow = pluginButtonHost.attachShadow({ mode: "closed" });
+  pluginButtonHost.style.cssText = "position:fixed;z-index:2147483647;right:16px;bottom:16px;";
+  const style = document.createElement("style");
+  style.textContent = `
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      font: 13px/1 system-ui, sans-serif;
+      color: #1c3a1e;
+      background: linear-gradient(#fdfdfd, #e8efe8);
+      border: 1px solid #9db89f;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      padding: 8px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .pill:hover { background: linear-gradient(#ffffff, #dcebdd); }
+    .icon { width: 16px; height: 16px; flex: 0 0 16px; display: block; margin-top: -1px; }
+    .close { font-size: 11px; color: #777; padding: 2px 4px; border-radius: 8px; }
+    .close:hover { background: #d6d6d6; color: #333; }
+  `;
+  const pill = document.createElement("div");
+  pill.className = "pill";
+  pluginButtonLabel = document.createElement("span");
+  const close = document.createElement("span");
+  close.className = "close";
+  close.textContent = "✕";
+  pill.append(brandIcon(), pluginButtonLabel, close);
+  shadow.append(style, pill);
+  close.addEventListener("click", (e) => {
+    e.stopPropagation();
+    pluginDismissed.add(location.href);
+    renderPluginButton();
+  });
+  pill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    pluginButtonLabel.textContent = "Sending…";
+    handToPlugin(location.href, (r) => {
+      pluginButtonLabel.textContent = r && r.ok ? "Sent to Hydra ✓" : "Hydra not reachable";
+      setTimeout(renderPluginButton, SENT_LINGER_MS);
+    });
+  });
+  document.documentElement.append(pluginButtonHost);
+}
+
+/// The corner button is for a claimed page with no player to sit on (a
+/// playlist); where there is one, the video panel carries the plugin instead.
+function renderPluginButton() {
+  if (!pluginPage || pluginDismissed.has(location.href) || panelMedia()) {
+    if (pluginButtonHost) pluginButtonHost.style.display = "none";
+    return;
+  }
+  if (!pluginButtonHost) buildPluginButton();
+  pluginButtonLabel.textContent = "Download with Hydra";
+  pluginButtonHost.title = `Opens ${pluginPage.name} in Hydra`;
+  pluginButtonHost.style.display = "block";
+}
+
+function refreshPlugins() {
+  try {
+    chrome.runtime.sendMessage({ type: "page-plugin", url: location.href }, (r) => {
+      pluginLinkSchemes = r?.schemes || [];
+      pluginPage = r?.page || null;
+      renderPluginButton();
+      // A same-document navigation: the open panel still offers the last page.
+      if (panelTarget) showPanel(panelTarget);
+    });
+  } catch {
+    // Extension reloaded underneath us; harmless.
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === "location-changed") refreshPlugins();
+});
+
 // A change in the popup has to reach pages that are already open: settings ride
 // the `page-media` reply, so re-asking for it is the whole update. Only these
 // keys change what the page shows — the rest of the stored state (capture
@@ -1072,6 +1213,7 @@ document.addEventListener("fullscreenchange", () => {
 const PAGE_SETTINGS = ["enabled", "videoPanel", "selectionPill", "panelTimeout"];
 chrome.storage?.onChanged?.addListener((changes, area) => {
   if (area === "local" && PAGE_SETTINGS.some((k) => k in changes)) refreshPageItems();
+  if (area === "local" && ("plugins" in changes || "enabled" in changes)) refreshPlugins();
 });
 
 // Both at load: the sniffed list, and where this site's bar was last put.
@@ -1079,3 +1221,4 @@ chrome.storage?.onChanged?.addListener((changes, area) => {
 // at the default inset and then jumps to the remembered spot.
 loadPanelOffset();
 refreshPageItems();
+refreshPlugins();

@@ -168,6 +168,7 @@ async function getState() {
     selectionPill: PILL_MODE_DEFAULT, // when the pill is offered beside selected links
     panelTimeout: PANEL_TIMEOUT_DEFAULT, // seconds it lingers; 0 = until dismissed
     hydraSeen: false, // ever completed a round-trip
+    plugins: [], // enabled Hydra plugins and the addresses they claim
   });
 }
 
@@ -177,6 +178,7 @@ function absorbReply(reply) {
   if (typeof reply.capture === "boolean") patch.guiCapture = reply.capture;
   if (typeof reply.auto_types === "string" && reply.auto_types) patch.autoTypes = reply.auto_types;
   if (typeof reply.dont_start_sites === "string") patch.skipSites = reply.dont_start_sites;
+  if (Array.isArray(reply.plugins)) patch.plugins = reply.plugins;
   chrome.storage.local.set(patch);
 }
 
@@ -769,6 +771,97 @@ async function offerToHydra({ url, filename, mime, size, referer }) {
   });
   if (reply && reply.ok) return null;
   return /^hydra is starting$/i.test(reply?.error || "") ? HYDRA_STARTING : "Hydra did not take it";
+}
+
+// ----------------------------------------------------------------- plugins
+
+// A plugin claim is a Chrome-style match pattern, read the way hydra-plugin's
+// matcher.rs reads it: `magnet:*` claims a whole scheme, `*://` means http or
+// https, `*.host` means strictly a subdomain, and `*` in the path is a glob
+// over path and query.
+function claimMatches(pattern, address) {
+  let url;
+  try {
+    url = new URL(address);
+  } catch {
+    return false;
+  }
+  const scheme = url.protocol.slice(0, -1);
+  const whole = /^([a-z]+):\*$/.exec(pattern);
+  if (whole) return scheme === whole[1];
+  const parts = /^([^:/]+):\/\/([^/]+)(\/.*)$/s.exec(pattern);
+  if (!parts) return false;
+  const [, want, hostPattern, pathPattern] = parts;
+  const schemeOk = want === "*" ? scheme === "http" || scheme === "https" : scheme === want.toLowerCase();
+  return schemeOk && claimHostMatches(hostPattern, url) && claimGlob(pathPattern, url.pathname + url.search);
+}
+
+const DEFAULT_PORTS = { http: "80", https: "443", ftp: "21" };
+
+function claimHostMatches(pattern, url) {
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (!host || host.includes(":") || host.startsWith("[")) return false;
+  const colon = pattern.lastIndexOf(":");
+  const [hostPart, port] = colon < 0 ? [pattern, "*"] : [pattern.slice(0, colon), pattern.slice(colon + 1)];
+  const urlPort = url.port || DEFAULT_PORTS[url.protocol.slice(0, -1)] || "";
+  if (port !== "*" && port !== urlPort) return false;
+  const want = hostPart.toLowerCase();
+  if (want === "*") return true;
+  if (want.startsWith("*.")) return host.endsWith(want.slice(1)) && host.length > want.length - 1;
+  return host === want;
+}
+
+function claimGlob(pattern, text) {
+  const body = pattern.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+  return new RegExp(`^${body}$`, "s").test(text);
+}
+
+// Hosts this build must never offer a plugin on — a store policy, set by the
+// browser's own background.js (see chrome/background.js). Empty elsewhere.
+function pluginWithheld(address) {
+  const hosts = globalThis.PLUGIN_HOSTS_WITHHELD || [];
+  let host;
+  try {
+    host = new URL(address).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return hosts.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
+// Schemes a browser navigates or downloads itself. A plugin claiming one of
+// these whole claims no page in particular, and must not take over the web.
+const BROWSER_SCHEMES = new Set(["http", "https", "ftp", "file", "data", "blob", "javascript", "about"]);
+
+const claimsWholeBrowserScheme = (claim) => BROWSER_SCHEMES.has(/^([a-z]+):\*$/.exec(claim)?.[1]);
+
+/// The first enabled plugin, in Hydra's resolver order, that claims `address`.
+function pluginFor(plugins, address) {
+  if (pluginWithheld(address)) return null;
+  const claims = (p) => (p.claims || []).some((c) => !claimsWholeBrowserScheme(c) && claimMatches(c, address));
+  return (plugins || []).find(claims) || null;
+}
+
+/// Link schemes the content script hands to Hydra on click (`magnet`): the
+/// ones a whole-scheme claim names and no browser handles on its own.
+function pluginSchemes(plugins) {
+  const schemes = (plugins || []).flatMap((p) =>
+    (p.claims || []).map((c) => /^([a-z]+):\*$/.exec(c)?.[1]).filter((s) => s && !BROWSER_SCHEMES.has(s))
+  );
+  return [...new Set(schemes)];
+}
+
+async function sendPluginUrl(url, { referer = null, tabUrl = null } = {}) {
+  const web = /^https?:/i.test(url);
+  return request({
+    type: "plugin-url",
+    url,
+    referer,
+    tab_url: tabUrl,
+    cookies: web ? await cookieHeader(url, referer) : null,
+    user_agent: navigator.userAgent,
+    proxy: web ? await captureProxy(url) : null,
+  });
 }
 
 // The native host's answer when it launched the app but the app had not
@@ -1650,7 +1743,15 @@ async function clearTab(tabId) {
 }
 chrome.tabs.onRemoved.addListener((tabId) => clearTab(tabId));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url) clearTab(tabId); // navigated away: stale list
+  if (!changeInfo.url) return;
+  clearTab(tabId); // navigated away: stale list
+  // A same-document navigation (YouTube moving to the next video) runs no
+  // new content script, so the page is told its address changed.
+  try {
+    Promise.resolve(chrome.tabs.sendMessage(tabId, { type: "location-changed" })).catch(() => {});
+  } catch {
+    // No content script in that tab (a browser page); nothing to tell.
+  }
 });
 
 // ------------------------------------------------------------ popup/content
@@ -1785,6 +1886,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             referer: hit?.pageUrl || msg.referer || null,
             filename: hit ? mediaName(msg.url, tab?.title, hit.kind) : null,
           })
+        );
+        break;
+      }
+      case "page-plugin": {
+        // What the content script may offer: a button when a plugin claims
+        // the page itself, and the link schemes it should hand over on click.
+        const state = await getState();
+        const plugins = state.enabled ? state.plugins : [];
+        const url = msg.url || "";
+        const page = /^https?:/i.test(url) ? pluginFor(plugins, url) : null;
+        sendResponse({
+          page: page ? { id: page.id, name: page.name } : null,
+          schemes: pluginSchemes(plugins),
+        });
+        break;
+      }
+      case "plugin-url": {
+        const state = await getState();
+        const url = msg.url || "";
+        if (!state.enabled || !pluginFor(state.plugins, url)) {
+          return sendResponse({ ok: false, error: "no plugin for this address" });
+        }
+        sendResponse(
+          await sendPluginUrl(url, { referer: msg.referer || null, tabUrl: sender?.tab?.url || null })
         );
         break;
       }

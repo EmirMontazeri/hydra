@@ -72,7 +72,7 @@ function panel(tagName = "VIDEO") {
     let panelDragged = false, panelEnabled = true, panelLingerMs = 10000;
     let panelOffset = { x: 10, y: 10 };
     const panelDismissed = new WeakSet(), DRAG_SLOP = 5, DRM_WHY = "Protected";
-    const pageItems = { streams: [] };
+    const pageItems = { streams: [] }, pluginPage = null;
     let rows = [{ label: "360p" }, { label: "720p" }], downloads = 0;
     const buildRows = () => rows, playingSrc = () => "", pageTitle = () => "Clip";
     const brandIcon = () => document.createElement("img");

@@ -406,6 +406,7 @@ pub fn update(app: &mut App, message: Message) -> Task<crate::app::Message> {
                                     > semver::Version::parse(&plugin.manifest.version).ok()
                             })
                     });
+                    crate::extbus::publish_plugins(&list);
                     page.installed = list;
                     page.indexes = indexes;
                 }
@@ -1426,6 +1427,13 @@ fn form_answers(
     Ok(answers)
 }
 
+/// Whether an enabled plugin claims the address.
+pub fn claimed(app: &App, address: &str) -> bool {
+    app.options.plugins.installed.iter().any(|plugin| {
+        plugin.enabled && hya_plugin::matcher::claims_input(&plugin.manifest, address)
+    })
+}
+
 /// File actions declared by enabled plugins in resolver precedence order.
 pub fn input_actions(app: &App) -> Vec<(String, usize, hya_plugin_api::InputAction)> {
     app.options
@@ -1502,6 +1510,23 @@ pub(crate) mod tests {
     pub(crate) fn file_plugin(id: &str, label: &str, extension: &str) -> Installed {
         serde_json::from_value(serde_json::json!({"manifest": {"id":id,"name":label,"version":"1.0.0","api":1,"module":"plugin.wasm",
             "input_actions":[{"label":label,"extensions":[extension]}]}, "directory":"/plugins/test", "dev":false,"enabled":true,"grants":{},"pins":{}})).unwrap()
+    }
+
+    pub(crate) fn claiming_plugin(id: &str, claims: &[&str]) -> Installed {
+        serde_json::from_value(serde_json::json!({"manifest": {"id":id,"name":id,"version":"1.0.0","api":1,"module":"plugin.wasm",
+            "hooks":["resolve"],"claims":claims}, "directory":"/plugins/test", "dev":false,"enabled":true,"grants":{},"pins":{}})).unwrap()
+    }
+
+    #[test]
+    fn only_enabled_plugins_claim_an_address() {
+        let mut app = App::default();
+        let magnet = "magnet:?xt=urn:btih:abc";
+        assert!(!claimed(&app, magnet));
+        app.options.plugins.installed = vec![claiming_plugin("hydra.torrent", &["magnet:*"])];
+        assert!(claimed(&app, magnet));
+        assert!(!claimed(&app, "https://example.com/magnet"));
+        app.options.plugins.installed[0].enabled = false;
+        assert!(!claimed(&app, magnet));
     }
 
     pub(crate) fn transfer_plan() -> PlanInfo {
