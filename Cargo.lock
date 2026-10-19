@@ -2473,7 +2473,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "iced_core",
  "iced_debug",
@@ -2489,7 +2489,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "bitflags 2.13.2",
  "bytes",
@@ -2506,7 +2506,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -2516,7 +2516,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "futures",
  "iced_core",
@@ -2530,7 +2530,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -2550,7 +2550,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -2559,7 +2559,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2571,7 +2571,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "bytes",
  "iced_core",
@@ -2583,7 +2583,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2600,7 +2600,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -2620,7 +2620,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.14.2"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "iced_renderer",
  "log",
@@ -2633,7 +2633,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.14.1"
-source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#4d51fe59fe7c54be6ebbcc1e6719d7bc1f22bc65"
+source = "git+https://github.com/ja7ad/iced?branch=hydra-0.14#f173ef5711136a95a1a5d5efba3bc6600dc0dc41"
 dependencies = [
  "iced_debug",
  "iced_program",
