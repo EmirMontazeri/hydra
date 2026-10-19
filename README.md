@@ -44,13 +44,6 @@
 - [Uninstall](#uninstall)
   - [Quick Uninstall (prebuilt installs)](#quick-uninstall-prebuilt-installs)
 - [Usage](#usage)
-  - [Basic Download](#basic-download)
-  - [Multi-Connection & Mirror Sources](#multi-connection--mirror-sources)
-  - [Metalink](#metalink)
-  - [Cookies and Authenticated Downloads](#cookies-and-authenticated-downloads)
-  - [CLI Compatibility (`wget` / `curl` Mode)](#cli-compatibility-wget--curl-mode)
-  - [Interactive Queue Manager (TUI)](#interactive-queue-manager-tui)
-  - [Remote Checksum Lookup & Verification](#remote-checksum-lookup--verification)
   - [Portable GUI Profile](#portable-gui-profile)
 - [Plugins](#plugins)
   - [Plugin architecture](#plugin-architecture)
@@ -437,224 +430,28 @@ The scripts remove binaries, extensions, manifests, desktop shortcuts, and start
 
 ## Usage
 
-### Basic Download
+Download a file, with the connection count chosen automatically:
 
 ```bash
-# Retrieve a file with automatic concurrency discovery
 hydra https://example.com/archive.tar.gz
-
-# Specify output destination
-hydra https://example.com/archive.tar.gz -O output.tar.gz
 ```
 
-> **`hya` works everywhere `hydra` does.** Every install channel — the install
-> scripts, Homebrew, the `.deb`/`.rpm`/AUR packages, the macOS `.pkg` and the
-> Windows installer — puts the CLI on your `PATH` under both names. It is
-> three letters to type, and it is also the name to reach for on a machine
-> that already has [THC-Hydra](https://github.com/vanhauser-thc/thc-hydra),
-> the login auditor, which is `hydra` too. Shell completions are installed for
-> both; `hydra install-completions --bin-name hya` adds them by hand.
+`hya` is the same CLI under a shorter name and works everywhere `hydra` does.
+Every install channel puts both on your `PATH`; use `hya` on a machine that
+already has [THC-Hydra](https://github.com/vanhauser-thc/thc-hydra), the login
+auditor, which is also called `hydra`.
 
-### Multi-Connection & Mirror Sources
+Everything else is in the wiki:
 
-```bash
-# Explicit connection count (e.g., 8 connections)
-hydra -x 8 https://example.com/largefile.iso
+| Guide | Covers |
+| --- | --- |
+| [**Hydra CLI Guide**](https://github.com/ja7ad/hydra/wiki/Hydra-CLI-Guide) | Options, multiple URLs, mirrors, Metalink, `wget`/`curl` mode, the interactive queue manager, cookies and logged-in downloads, checksums and bitrot repair |
+| [YouTube Downloader plugin](https://github.com/ja7ad/hydra/wiki/Youtube-downloader-plugin) | Single videos, playlists and audio-only downloads |
+| [FFmpeg Integration](https://github.com/ja7ad/hydra/wiki/Hydra-ffmpeg-integration) | Merging HLS/DASH streams into MP4 |
+| [Writing, building, and signing plugins](https://github.com/ja7ad/hydra/wiki/Writing,-building,-and-signing-Hydra-plugins) | Plugin authoring with `hydra-plugin` |
+| [macOS Permissions Guide](https://github.com/ja7ad/hydra/wiki/macOS-Permissions-Guide-for-Hydra) | Full Disk Access, download folders, launch at login |
+| [Safari Extension](https://github.com/ja7ad/hydra/wiki/Safari-Extension-(Developer-Mode)) | Running the Safari extension in developer mode |
 
-# Fetch across multiple mirror origins serving identical files
-hydra --mirrors https://mirror1.example.org/file.iso https://mirror2.example.org/file.iso
-```
-
-### Metalink
-
-A Metalink document supplies the three things a bare URL cannot: **every mirror
-that holds the object**, its **exact size**, and **what it must hash to**. HYDRA
-reads both dialects — Metalink 3.0 (`.metalink`, what mirrormanager and most
-distribution redirectors emit) and Metalink 4 / RFC 5854 (`.meta4`) — and needs
-no flag to do it:
-
-```bash
-# A document on disk, whatever it is called: the content is read.
-hydra ./Fedora-Workstation.metalink
-
-# A redirector that serves one. Detected from its Content-Type on the probe
-# that was going to happen anyway.
-hydra "https://mirrors.fedoraproject.org/metalink?repo=fedora-40&arch=x86_64"
-
-# Or name it outright, when a URL reveals nothing about itself.
-hydra --metalink https://example.org/big.iso.meta4
-```
-
-What that buys, over the same object fetched from one URL:
-
-- **Mirrors that can actually be assembled together.** Splicing ranges across
-  hosts is normally gated on every source agreeing about a strong validator —
-  and independent mirror operators cannot share an `ETag`, so that gate keeps
-  exactly one source out of a nineteen-mirror list. A document states the size
-  and a content digest from *outside* the mirrors, so agreement is established
-  against the document instead. Stronger, and satisfiable.
-- **A reserve bench.** Politeness authorises a handful of connections; the rest
-  of the list is held back. When a mirror dies or goes silent mid-transfer, its
-  connections are re-pointed at a reserve **in place** — the socket count stays
-  what politeness allowed, and no range is stranded.
-- **Localised repair.** Where the document publishes `<pieces>`, each chunk is
-  verified as the file lands and a bad one costs a single chunk refetched from a
-  *different* mirror, not a whole re-download.
-
-Read one without fetching anything, including what HYDRA would do with it:
-
-```bash
-hydra metalink ./Fedora-Workstation.metalink
-hydra metalink --json https://example.org/big.iso.meta4
-```
-
-Narrow the choice:
-
-```bash
-# Prefer mirrors near you; the rest stay as reserves.
-hydra --metalink-location de,nl,fr ./mirrors.meta4
-
-# One entry from a document that describes several.
-hydra --metalink-file netinst.iso ./mirrors.meta4
-
-# Only entries for one platform, and only one protocol.
-hydra --metalink-os linux --metalink-preferred-protocol https \
-      --metalink-enable-unique-protocol ./mirrors.meta4
-```
-
-HTTP(S) mirrors are used first and `ftp://` mirrors wait behind them as
-fallbacks, whatever the publisher's ranking says — ranges can be spliced and
-chunks repaired over HTTP, while FTP streams from a single connection
-(`--metalink-preferred-protocol ftp` restores the old order). Mirrors on schemes
-this build cannot fetch (`rsync://` and friends) are reported
-and skipped rather than attempted; `<metaurl>` indirections such as BitTorrent
-are recorded and not followed; and a `<file name>` that tries to escape the
-output directory is refused outright. A `<signature>` is reported and **not**
-verified — verify it yourself before trusting the digests it covers.
-
-Servers that implement **Metalink over HTTP (RFC 6249)** need no document at
-all: `Link: <...>; rel=duplicate` headers on an ordinary download become
-reserves, discovered on the probe that already happened.
-
-The desktop app reads the same documents: paste a `.meta4`/`.metalink` path or
-URL into **Add URL** and it shows what the list offers — files, sizes, how many
-mirrors are usable, whether per-chunk verification is available — before adding
-one download per entry. `libhydra` exposes it too, through
-`hydra_metalink_parse`/`_open`/`_fetch` and `hydra_job_create_from_metalink`.
-
-### Cookies and Authenticated Downloads
-
-A file behind a login — a university mirror, a private GitLab artifact, a forum
-attachment, a paywalled dataset — needs the session your browser already has.
-
-```bash
-# A cookie string, the way curl spells it
-hydra --cookie "session=abc; csrf=def" https://example.org/file.iso
-
-# A Netscape cookies.txt, read before the first request and written back after
-hydra --cookie-jar ./jar.txt https://example.org/file.iso
-
-# wget's one-direction spellings
-hydra --load-cookies ./cookies.txt https://example.org/file.iso
-hydra --save-cookies ./cookies.txt --keep-session-cookies https://example.org/file.iso
-
-# Or take them straight out of the browser that has the session
-hydra --cookies-from-browser firefox https://example.org/file.iso
-hydra --cookies-from-browser "chrome:Profile 2" https://example.org/file.iso
-```
-
-`--cookies-from-browser` reads the browser's own store — Firefox, LibreWolf and
-Zen from `cookies.sqlite`; Chrome, Chromium, Edge, Brave, Vivaldi and Opera from
-their encrypted `Cookies` database, decrypted through the platform keychain the
-way the browser does it; Safari from `Cookies.binarycookies`. A running browser
-does not have to be closed: the store is copied and read from the copy.
-
-On macOS, a browser profile lives behind the system privacy control, so the
-first run reports that it cannot read the store and names the path. Grant **Full
-Disk Access** to whatever is running hydra — your terminal, or Hydra itself for
-the desktop app — in System Settings ▸ Privacy & Security, and try again.
-
-Three things it will not do:
-
-- **Read more than it needs.** Only the host being downloaded from is kept; the
-  rest of the profile is discarded before the first request, and nothing is
-  written to disk unless `--cookie-jar` or `--save-cookies` asked for it.
-- **Do it quietly.** The run names the exact file it read and the host it read
-  it for. A download manager that opens a browser keychain without saying so is
-  indistinguishable from malware.
-- **Let a cookie cross an origin.** The jar selects by the host of the request
-  about to be sent, so a redirect from one site to another carries the second
-  site's cookies and nothing else. `Domain=` may only widen a cookie to a domain
-  the setting host is under, never to a public suffix. Values are never logged at
-  any `-v` level, and a jar file is written `0600`.
-
-Following a redirect chain that hands out a session works with no flag at all:
-a `Set-Cookie` on a `302` is held for the rest of that chain, which is what a
-login-gated CDN expects. The jar dies with the chain — nothing is read from or
-written to disk unless one of the flags above asked.
-
-In the desktop app, **Add URL** has a Cookies field, **Options ▸ Connection ▸
-Use cookies from** picks a browser and profile for downloads added by hand, and
-**Properties** shows where a download's cookies came from. Captures from the
-Hydra browser extension already carry the page's own cookies and are unaffected.
-
-### CLI Compatibility (`wget` / `curl` Mode)
-
-HYDRA can seamlessly emulate `wget` or `curl` flags:
-
-```bash
-# wget dialect
-hydra --compat=wget -c -O myfile.zip https://example.com/file.zip
-
-# curl dialect
-hydra --compat=curl -C - -o myfile.zip https://example.com/file.zip
-```
-
-The dialect is also taken from the name the binary is invoked as, so existing
-scripts can run unchanged. `hydra compat-link` installs those entry points:
-
-```bash
-# Show where the wget/curl links would go, and whether they would be reached
-hydra compat-link --dry-run
-
-# Create them next to the hydra binary
-hydra compat-link
-
-# Keep the real curl/wget names free
-hydra compat-link --name hydra-wget --name hydra-curl
-```
-
-A link only takes effect from a directory that is on `$PATH` *before* the one
-holding the real `curl`/`wget` — otherwise the shell keeps resolving the name to
-the original tool. `compat-link` checks that and tells you which binary wins, so
-a link that cannot be reached does not look like a silent failure. Existing files
-are never replaced without `--force`.
-
-### Interactive Queue Manager (TUI)
-
-```bash
-# Launch interactive terminal UI
-hydra interactive
-
-# Add multiple downloads into the queue
-hydra interactive https://example.com/file1.iso https://example.com/file2.zip
-
-# Enqueue every URL in a file (one per line, '#' comments allowed)
-hydra interactive -b urls.txt
-
-# Read the list from stdin; with no terminal the queue runs headless
-cat urls.txt | hydra interactive -b -
-```
-
-### Remote Checksum Lookup & Verification
-
-```bash
-# Check remote advertised checksums without downloading the object
-hydra checksum https://example.com/release.tar.gz
-
-# Download with target hash verification
-hydra --checksum sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 https://example.com/file.tar.gz
-```
 
 ### Portable GUI Profile
 
@@ -785,7 +582,7 @@ Wasm plugins remain sandboxed; the bundled torrent library is a trusted in-proce
 component signed by Hydra. On Linux, native plugins require a dynamically linked Hydra host: use
 the CLI included in the desktop bundle, a distro package, or a GNU-target source
 build. The standalone static musl CLI supports Wasm plugins but cannot load native
-libraries. See the [Rust guest SDK](crates/hydra-plugin-sdk/),
+libraries. See the [plugin authoring guide](https://github.com/ja7ad/hydra/wiki/Writing,-building,-and-signing-Hydra-plugins), the [Rust guest SDK](crates/hydra-plugin-sdk/),
 [native ABI](crates/hydra-plugin-api/include/hydra-native.h), and
 [torrent plugin](plugins/hydra-torrent/) for working examples.
 
