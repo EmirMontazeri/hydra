@@ -100,10 +100,17 @@ fn extraction_output(
 }
 
 fn extraction_error(host: &Host, error: PluginError, playlist: bool) -> PluginError {
-    if error.code != ErrorCode::ToolFailed
-        || !error.message.contains("Sign in to confirm")
-        || !error.message.contains("not a bot")
-    {
+    if error.code != ErrorCode::ToolFailed {
+        return error;
+    }
+    if error.message.contains("n challenge solving failed") {
+        let _ = host.log("warn", &error.message);
+        return PluginError::new(
+            ErrorCode::ToolFailed,
+            "yt-dlp could not solve YouTube's player challenge because it found no JavaScript runtime. Install Deno or Node.js (22 or newer), then pick it under 'JavaScript runtime for yt-dlp' in this plugin's settings. A pip-installed yt-dlp also needs `pip install -U \"yt-dlp[default]\"`; the standalone build from 'Download yt-dlp if it is missing' already bundles the solver. See plugin logs for the original error.",
+        );
+    }
+    if !error.message.contains("Sign in to confirm") || !error.message.contains("not a bot") {
         return error;
     }
     let _ = host.log("warn", &error.message);
@@ -432,6 +439,18 @@ mod tests {
         let playlist = extraction_error(&Host, error, true);
         assert_eq!(playlist.code, ErrorCode::Network);
         assert!(playlist.message.contains("playlist inspection"));
+    }
+
+    #[test]
+    fn explains_missing_javascript_runtime_instead_of_page_reload_error() {
+        let error = PluginError::new(
+            ErrorCode::ToolFailed,
+            "WARNING: [youtube] RJ0VQMoZc8k: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime\nERROR: [youtube] RJ0VQMoZc8k: The page needs to be reloaded.",
+        );
+        let shown = extraction_error(&Host, error, false);
+        assert_eq!(shown.code, ErrorCode::ToolFailed);
+        assert!(shown.message.contains("Deno or Node.js"));
+        assert!(!shown.message.contains("page needs to be reloaded"));
     }
 
     #[test]
