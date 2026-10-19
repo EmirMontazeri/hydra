@@ -405,6 +405,51 @@ impl Sidecar {
     }
 }
 
+/// URLs from a list, one per line; blank lines and `#` comments are skipped.
+pub fn parse_url_list(body: &str) -> Vec<String> {
+    body.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Read a URL list from `path`, or from stdin when `path` is `-`.
+///
+/// Every line must parse as a URL: a typo caught here costs a message, while one
+/// caught by the queue costs a download named `download`. All bad lines are
+/// reported together with their line numbers.
+pub fn read_url_list(path: &Path) -> Result<Vec<String>, String> {
+    let body = if path.as_os_str() == "-" {
+        std::io::read_to_string(std::io::stdin())
+    } else {
+        std::fs::read_to_string(path)
+    }
+    .map_err(|e| {
+        let hint = if Url::parse(&path.to_string_lossy()).is_some() {
+            "\n  -b takes a file of URLs; pass URLs themselves as plain arguments"
+        } else {
+            ""
+        };
+        format!("cannot read {}: {e}{hint}", path.display())
+    })?;
+    let bad: Vec<String> = body
+        .lines()
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.trim()))
+        .filter(|(_, l)| !l.is_empty() && !l.starts_with('#') && Url::parse(l).is_none())
+        .map(|(n, l)| format!("  line {n}: {l}"))
+        .collect();
+    if !bad.is_empty() {
+        return Err(format!(
+            "{}: not a URL:\n{}",
+            path.display(),
+            bad.join("\n")
+        ));
+    }
+    Ok(parse_url_list(&body))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -930,5 +975,50 @@ mod tests {
             .unwrap()
             .to_endpoint(None);
         assert!(s.tls && s.port == 443);
+    }
+
+    #[test]
+    fn url_list_skips_blanks_and_comments() {
+        let got = parse_url_list("# mirrors\n\nhttp://a/x\n  http://b/y  \n   # off\n");
+        assert_eq!(got, ["http://a/x", "http://b/y"]);
+    }
+
+    #[test]
+    fn url_list_of_only_comments_is_empty() {
+        assert!(parse_url_list("# nothing\n\n").is_empty());
+    }
+
+    #[test]
+    fn read_url_list_reports_every_bad_line_with_its_number() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("urls.txt");
+        std::fs::write(&path, "http://a/x\nnot a url\n# c\nhttp://b/y\n::bad\n").unwrap();
+        let err = read_url_list(&path).unwrap_err();
+        assert!(err.contains("line 2: not a url"), "{err}");
+        assert!(err.contains("line 5: ::bad"), "{err}");
+        assert!(!err.contains("line 1"), "{err}");
+    }
+
+    #[test]
+    fn read_url_list_accepts_a_clean_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("urls.txt");
+        std::fs::write(&path, "http://a/x\n\nhttp://b/y\n").unwrap();
+        assert_eq!(read_url_list(&path).unwrap(), ["http://a/x", "http://b/y"]);
+    }
+
+    #[test]
+    fn read_url_list_names_a_missing_file() {
+        let err = read_url_list(Path::new("/nonexistent/urls.txt")).unwrap_err();
+        assert!(err.contains("/nonexistent/urls.txt"), "{err}");
+    }
+
+    #[test]
+    fn read_url_list_hints_when_given_a_url_instead_of_a_file() {
+        let err = read_url_list(Path::new("http://a/x")).unwrap_err();
+        assert!(
+            err.contains("pass URLs themselves as plain arguments"),
+            "{err}"
+        );
     }
 }

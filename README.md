@@ -638,6 +638,12 @@ hydra interactive
 
 # Add multiple downloads into the queue
 hydra interactive https://example.com/file1.iso https://example.com/file2.zip
+
+# Enqueue every URL in a file (one per line, '#' comments allowed)
+hydra interactive -b urls.txt
+
+# Read the list from stdin; with no terminal the queue runs headless
+cat urls.txt | hydra interactive -b -
 ```
 
 ### Remote Checksum Lookup & Verification

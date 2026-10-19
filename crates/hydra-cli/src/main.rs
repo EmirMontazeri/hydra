@@ -458,12 +458,7 @@ async fn async_main() -> std::process::ExitCode {
     let mut urls = args.urls.clone();
     if let Some(path) = &args.input_file {
         match std::fs::read_to_string(path) {
-            Ok(body) => urls.extend(
-                body.lines()
-                    .map(str::trim)
-                    .filter(|l| !l.is_empty() && !l.starts_with('#'))
-                    .map(str::to_string),
-            ),
+            Ok(body) => urls.extend(url::parse_url_list(&body)),
             Err(e) => {
                 eprintln!("hydra: cannot read --input-file {}: {e}", path.display());
                 return std::process::ExitCode::from(2);
@@ -818,6 +813,7 @@ async fn run_subcommand(
         }
         cli::Command::Interactive {
             urls,
+            batch_file,
             queue_file,
             headless,
             max_active,
@@ -829,6 +825,15 @@ async fn run_subcommand(
             let max = (*max_active).clamp(1, 16);
             let mut list = args.urls.clone();
             list.extend(urls.clone());
+            if let Some(file) = batch_file {
+                match url::read_url_list(file) {
+                    Ok(batch) => list.extend(batch),
+                    Err(e) => {
+                        eprintln!("hydra: --batch-file {e}");
+                        return std::process::ExitCode::from(2);
+                    }
+                }
+            }
             // The queue's items run with the same download flags a one-shot
             // transfer would: a proxy, a rate cap or a header given on the
             // command line applies to everything the queue fetches.

@@ -1165,6 +1165,13 @@ pub enum Command {
         #[arg(value_name = "URL")]
         urls: Vec<String>,
 
+        /// Enqueue URLs from FILE, one per line (`-` reads stdin).
+        ///
+        /// Blank lines and lines starting with `#` are skipped. A line that is not a
+        /// URL aborts the run before anything is queued.
+        #[arg(short = 'b', long = "batch-file", value_name = "FILE")]
+        batch_file: Option<PathBuf>,
+
         /// Queue file. Defaults to a per-user state directory.
         #[arg(long = "queue-file", value_name = "FILE")]
         queue_file: Option<PathBuf>,
@@ -1868,6 +1875,7 @@ mod tests {
         match iv.command {
             Some(Command::Interactive {
                 urls,
+                batch_file,
                 queue_file,
                 headless,
                 max_active,
@@ -1875,9 +1883,21 @@ mod tests {
                 assert_eq!(urls, vec!["http://x/f".to_string()]);
                 assert_eq!(queue_file.unwrap().to_str().unwrap(), "/tmp/q.json");
                 assert_eq!(max_active, 3);
+                assert!(batch_file.is_none());
                 assert!(!headless, "headless is opt-in; the UI is the default");
             }
             _ => panic!("interactive with its own options did not parse"),
+        }
+        let bf =
+            Cli::try_parse_from(["hydra", "interactive", "-b", "urls.txt", "http://x/f"]).unwrap();
+        match bf.command {
+            Some(Command::Interactive {
+                urls, batch_file, ..
+            }) => {
+                assert_eq!(batch_file.unwrap().to_str().unwrap(), "urls.txt");
+                assert_eq!(urls, vec!["http://x/f".to_string()]);
+            }
+            _ => panic!("interactive --batch-file did not parse"),
         }
         let b = Cli::try_parse_from(["hydra", "bench", "--real", "--reps", "5"]).unwrap();
         match b.command {
