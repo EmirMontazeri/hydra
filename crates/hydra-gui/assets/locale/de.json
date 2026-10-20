@@ -627,5 +627,6 @@
   "Customize toolbar": "Symbolleiste anpassen",
   "First": "Erste",
   "Last": "Letzte",
-  "Toolbar buttons shown: {shown} of {max}": "Angezeigte Symbolleistenschaltflächen: {shown} von {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Angezeigte Symbolleistenschaltflächen: {shown} von {max}",
+  "Choose a folder": "Choose a folder"
 }

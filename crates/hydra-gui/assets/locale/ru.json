@@ -627,5 +627,6 @@
   "Customize toolbar": "Настроить панель инструментов",
   "First": "Первым",
   "Last": "Последним",
-  "Toolbar buttons shown: {shown} of {max}": "Показано кнопок панели: {shown} из {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Показано кнопок панели: {shown} из {max}",
+  "Choose a folder": "Choose a folder"
 }

@@ -627,5 +627,6 @@
   "Customize toolbar": "Personalizza la barra degli strumenti",
   "First": "Primo",
   "Last": "Ultimo",
-  "Toolbar buttons shown: {shown} of {max}": "Pulsanti della barra mostrati: {shown} su {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Pulsanti della barra mostrati: {shown} su {max}",
+  "Choose a folder": "Choose a folder"
 }

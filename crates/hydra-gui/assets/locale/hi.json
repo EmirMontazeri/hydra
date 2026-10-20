@@ -627,5 +627,6 @@
   "Customize toolbar": "टूलबार कस्टमाइज़ करें",
   "First": "पहला",
   "Last": "अंतिम",
-  "Toolbar buttons shown: {shown} of {max}": "दिखाए गए टूलबार बटन: {max} में से {shown}"
+  "Toolbar buttons shown: {shown} of {max}": "दिखाए गए टूलबार बटन: {max} में से {shown}",
+  "Choose a folder": "Choose a folder"
 }

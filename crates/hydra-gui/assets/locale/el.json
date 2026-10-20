@@ -627,5 +627,6 @@
   "Customize toolbar": "Προσαρμογή γραμμής εργαλείων",
   "First": "Πρώτο",
   "Last": "Τελευταίο",
-  "Toolbar buttons shown: {shown} of {max}": "Κουμπιά γραμμής εργαλείων: {shown} από {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Κουμπιά γραμμής εργαλείων: {shown} από {max}",
+  "Choose a folder": "Choose a folder"
 }

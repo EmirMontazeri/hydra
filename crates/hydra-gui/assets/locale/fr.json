@@ -627,5 +627,6 @@
   "Customize toolbar": "Personnaliser la barre d'outils",
   "First": "Premier",
   "Last": "Dernier",
-  "Toolbar buttons shown: {shown} of {max}": "Boutons de la barre affichés : {shown} sur {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Boutons de la barre affichés : {shown} sur {max}",
+  "Choose a folder": "Choose a folder"
 }

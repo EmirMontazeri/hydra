@@ -627,5 +627,6 @@
   "Customize toolbar": "Mukauta työkalupalkkia",
   "First": "Ensimmäiseksi",
   "Last": "Viimeiseksi",
-  "Toolbar buttons shown: {shown} of {max}": "Työkalupalkin painikkeita näkyvissä: {shown} / {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Työkalupalkin painikkeita näkyvissä: {shown} / {max}",
+  "Choose a folder": "Choose a folder"
 }

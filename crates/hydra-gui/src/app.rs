@@ -496,7 +496,8 @@ pub struct FileInfoState {
 }
 
 impl FileInfoState {
-    /// The Save As box shows folder and file name as one path, as  does.
+    /// Folder and file name as one path, the shape a save dialog returns.
+    #[cfg(test)]
     pub fn save_as(&self) -> String {
         if self.save_dir.is_empty() {
             self.file_name.clone()
@@ -1407,7 +1408,6 @@ pub enum Message {
     /// File Info dialog: the category picker changed.
     FiCategory(String),
     /// TheSave As box: one full path, folder and file name.
-    FiSaveAs(String),
     FiBgToggle(bool),
     FiBrowse,
     /// The Save As path chosen for download `.0`. Carries the download
@@ -1417,6 +1417,8 @@ pub enum Message {
     FiPathPicked(DlId, String),
     FiDescription(String),
     FiRemember(bool),
+    FiSaveDir(String),
+    FiFileName(String),
     FiUrl(String),
     FiLogin(String),
     FiPass(String),
@@ -2911,7 +2913,7 @@ impl App {
                         0.0
                     };
                 if self.file_info.is_new {
-                    (680.0, 276.0 + proxy)
+                    (680.0, 316.0 + proxy)
                 } else {
                     let result = self
                         .item(dl)
@@ -2926,7 +2928,7 @@ impl App {
                         .item(dl)
                         .and_then(|d| d.cookie_source.as_ref())
                         .map_or(0.0, |_| 48.0);
-                    (680.0, 336.0 + result + proxy + source)
+                    (680.0, 376.0 + result + proxy + source)
                 }
             }
             // Matches ProgToggleDetails: a box whose details are hidden
@@ -4309,6 +4311,12 @@ impl App {
                 .unwrap_or_default();
         }
         fi.save_dir = save_folder(&fi.save_dir);
+        if fi.is_new
+            && !fi.save_dir.is_empty()
+            && model::push_recent_dir(&mut self.state.recent_dirs, &fi.save_dir)
+        {
+            model::save_recent_dirs(&self.state.recent_dirs);
+        }
         // Options > Save to > "Change folder for category on last
         // selected" is the same tick, made for every dialog whose
         // folder the user actually edited.
@@ -6624,10 +6632,6 @@ impl App {
                 self.file_info.cat_touched = true;
                 Task::none()
             }
-            Message::FiSaveAs(s) => {
-                self.file_info.set_save_as(&s);
-                Task::none()
-            }
             Message::FiBgToggle(b) => {
                 self.cfg.settings.bg_download = b;
                 self.save_config();
@@ -6665,6 +6669,16 @@ impl App {
             }
             Message::FiDescription(s) => {
                 self.file_info.description = s;
+                Task::none()
+            }
+            Message::FiSaveDir(dir) => {
+                self.file_info.save_dir = dir;
+                self.file_info.dir_touched = true;
+                Task::none()
+            }
+            Message::FiFileName(name) => {
+                self.file_info.file_name = name;
+                self.file_info.name_touched = true;
                 Task::none()
             }
             Message::FiRemember(b) => {
@@ -13071,7 +13085,7 @@ mod tests {
             assert_eq!(app.file_info.save_dir, root);
             assert_eq!(app.file_info.file_name, name);
             let displayed = app.file_info.save_as();
-            let _ = app.update(Message::FiSaveAs(displayed));
+            app.file_info.set_save_as(&displayed);
             let _ = app.update(Message::FiDownloadLater);
             let d = app.item(id).unwrap();
             assert_eq!(d.save_dir, root);
@@ -13080,6 +13094,28 @@ mod tests {
             #[cfg(windows)]
             assert_eq!(d.full_path(), std::path::Path::new(root).join(name));
         }
+    }
+
+    #[test]
+    fn picking_a_folder_keeps_the_file_name_and_marks_only_the_folder_edited() {
+        let mut app = App::default();
+        app.file_info.file_name = "a.zip".into();
+        let _ = app.update(Message::FiSaveDir("/tmp/dl".into()));
+        assert_eq!(app.file_info.save_dir, "/tmp/dl");
+        assert_eq!(app.file_info.file_name, "a.zip");
+        assert!(app.file_info.dir_touched);
+        assert!(!app.file_info.name_touched);
+    }
+
+    #[test]
+    fn typing_a_file_name_keeps_the_folder_and_marks_only_the_name_edited() {
+        let mut app = App::default();
+        app.file_info.save_dir = "/tmp/dl".into();
+        let _ = app.update(Message::FiFileName("b.zip".into()));
+        assert_eq!(app.file_info.save_dir, "/tmp/dl");
+        assert_eq!(app.file_info.file_name, "b.zip");
+        assert!(app.file_info.name_touched);
+        assert!(!app.file_info.dir_touched);
     }
 
     #[test]
@@ -13122,7 +13158,7 @@ mod tests {
             d.state = DlState::Receiving;
             app.file_info = properties_for(&app, id);
 
-            let _ = app.update(Message::FiSaveAs(path.clone()));
+            app.file_info.set_save_as(&path);
             assert!(!app.file_info.dir_touched);
             assert!(app.file_info.name_touched);
             let _ = app.update(Message::FiOk);

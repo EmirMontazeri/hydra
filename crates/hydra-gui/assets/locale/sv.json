@@ -627,5 +627,6 @@
   "Customize toolbar": "Anpassa verktygsfältet",
   "First": "Först",
   "Last": "Sist",
-  "Toolbar buttons shown: {shown} of {max}": "Visade knappar i verktygsfältet: {shown} av {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Visade knappar i verktygsfältet: {shown} av {max}",
+  "Choose a folder": "Choose a folder"
 }

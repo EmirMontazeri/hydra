@@ -627,5 +627,6 @@
   "Customize toolbar": "Přizpůsobit panel nástrojů",
   "First": "První",
   "Last": "Poslední",
-  "Toolbar buttons shown: {shown} of {max}": "Zobrazená tlačítka panelu: {shown} z {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Zobrazená tlačítka panelu: {shown} z {max}",
+  "Choose a folder": "Choose a folder"
 }

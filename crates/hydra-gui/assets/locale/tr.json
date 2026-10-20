@@ -627,5 +627,6 @@
   "Customize toolbar": "Araç çubuğunu özelleştir",
   "First": "İlk",
   "Last": "Son",
-  "Toolbar buttons shown: {shown} of {max}": "Gösterilen araç çubuğu düğmeleri: {shown} / {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Gösterilen araç çubuğu düğmeleri: {shown} / {max}",
+  "Choose a folder": "Choose a folder"
 }

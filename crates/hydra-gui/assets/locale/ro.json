@@ -627,5 +627,6 @@
   "Customize toolbar": "Personalizează bara de instrumente",
   "First": "Primul",
   "Last": "Ultimul",
-  "Toolbar buttons shown: {shown} of {max}": "Butoane afișate în bara de instrumente: {shown} din {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Butoane afișate în bara de instrumente: {shown} din {max}",
+  "Choose a folder": "Choose a folder"
 }

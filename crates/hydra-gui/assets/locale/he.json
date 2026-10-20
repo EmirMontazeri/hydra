@@ -627,5 +627,6 @@
   "Customize toolbar": "התאמה אישית של סרגל הכלים",
   "First": "ראשון",
   "Last": "אחרון",
-  "Toolbar buttons shown: {shown} of {max}": "כפתורי סרגל כלים מוצגים: {shown} מתוך {max}"
+  "Toolbar buttons shown: {shown} of {max}": "כפתורי סרגל כלים מוצגים: {shown} מתוך {max}",
+  "Choose a folder": "Choose a folder"
 }

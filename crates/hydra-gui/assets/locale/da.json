@@ -627,5 +627,6 @@
   "Customize toolbar": "Tilpas værktøjslinjen",
   "First": "Først",
   "Last": "Sidst",
-  "Toolbar buttons shown: {shown} of {max}": "Knapper på værktøjslinjen: {shown} af {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Knapper på værktøjslinjen: {shown} af {max}",
+  "Choose a folder": "Choose a folder"
 }

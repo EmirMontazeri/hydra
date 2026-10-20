@@ -627,5 +627,6 @@
   "Customize toolbar": "ปรับแต่งแถบเครื่องมือ",
   "First": "แรกสุด",
   "Last": "ท้ายสุด",
-  "Toolbar buttons shown: {shown} of {max}": "ปุ่มแถบเครื่องมือที่แสดง: {shown} จาก {max}"
+  "Toolbar buttons shown: {shown} of {max}": "ปุ่มแถบเครื่องมือที่แสดง: {shown} จาก {max}",
+  "Choose a folder": "Choose a folder"
 }

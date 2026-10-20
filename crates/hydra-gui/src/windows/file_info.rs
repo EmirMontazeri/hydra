@@ -194,15 +194,31 @@ pub fn view(app: &App) -> El<'_> {
             .width(200.0)
             .into(),
     ));
+    let mut folders = app.state.recent_dirs.clone();
+    if !st.save_dir.is_empty() && !folders.contains(&st.save_dir) {
+        folders.insert(0, st.save_dir.clone());
+    }
     rows.push((
         Some(tr("Save As")),
         row![
-            field(&st.save_as(), Message::FiSaveAs),
+            pick_list(
+                folders,
+                (!st.save_dir.is_empty()).then(|| st.save_dir.clone()),
+                Message::FiSaveDir,
+            )
+            .placeholder(tr("Choose a folder"))
+            .text_size(theme::FONT_SIZE)
+            .style(theme::picker)
+            .width(Length::Fill),
             small_btn("...", Message::FiBrowse),
         ]
         .spacing(GAP)
         .align_y(iced::Alignment::Center)
         .into(),
+    ));
+    rows.push((
+        Some(tr("File name")),
+        field(&st.file_name, Message::FiFileName).into(),
     ));
     if st.is_new {
         // Name the folder the tick actually writes: General while

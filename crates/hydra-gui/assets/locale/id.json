@@ -627,5 +627,6 @@
   "Customize toolbar": "Sesuaikan bilah alat",
   "First": "Pertama",
   "Last": "Terakhir",
-  "Toolbar buttons shown: {shown} of {max}": "Tombol bilah alat ditampilkan: {shown} dari {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Tombol bilah alat ditampilkan: {shown} dari {max}",
+  "Choose a folder": "Choose a folder"
 }
