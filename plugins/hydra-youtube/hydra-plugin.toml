@@ -1,7 +1,7 @@
 id = "hydra.youtube"
 name = "YouTube Downloader"
 author = "Hydra Team"
-version = "0.1.2"
+version = "0.1.3"
 api = 1
 module = "plugin.wasm"
 license = "MIT OR Apache-2.0"
@@ -54,7 +54,7 @@ label = "JavaScript runtime for yt-dlp"
 type = "dropdown"
 options = ["default", "node", "deno"]
 default = "default"
-help = "Choose a runtime installed on your computer. Recent YouTube extractors need one to solve player challenges."
+help = "Recent YouTube extractors need a runtime to solve player challenges. Default uses Deno when installed, otherwise Node."
 
 [[settings]]
 key = "download_backend"

@@ -44,13 +44,12 @@ impl Plugin for Youtube {
             ]);
         }
         let settings = host.settings()?;
-        if let Some(runtime) = settings
-            .get("javascript_runtime")
-            .and_then(hya_plugin_sdk::Value::as_text)
-            .filter(|value| *value != "default")
-        {
-            args.extend(["--js-runtimes".into(), runtime.into()]);
-        }
+        let runtime = js_runtime(
+            settings
+                .get("javascript_runtime")
+                .and_then(hya_plugin_sdk::Value::as_text),
+        );
+        args.extend(["--js-runtimes".into(), runtime.into()]);
         if settings
             .get("use_cookies")
             .and_then(hya_plugin_sdk::Value::as_bool)
@@ -83,6 +82,15 @@ impl Plugin for Youtube {
             ),
         );
         Ok(Resolve::Plan(plan))
+    }
+}
+
+/// yt-dlp enables only Deno by default and `--js-runtimes` adds to that set, so
+/// the default also enables Node while Deno keeps its priority when installed.
+fn js_runtime(setting: Option<&str>) -> &str {
+    match setting {
+        None | Some("default") => "node",
+        Some(runtime) => runtime,
     }
 }
 
@@ -439,6 +447,14 @@ mod tests {
         let playlist = extraction_error(&Host, error, true);
         assert_eq!(playlist.code, ErrorCode::Network);
         assert!(playlist.message.contains("playlist inspection"));
+    }
+
+    #[test]
+    fn default_runtime_also_enables_node_and_explicit_choice_is_kept() {
+        assert_eq!(js_runtime(None), "node");
+        assert_eq!(js_runtime(Some("default")), "node");
+        assert_eq!(js_runtime(Some("deno")), "deno");
+        assert_eq!(js_runtime(Some("node")), "node");
     }
 
     #[test]

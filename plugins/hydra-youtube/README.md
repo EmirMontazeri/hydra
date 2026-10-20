@@ -35,8 +35,8 @@ GUI: Options → Extensions & Plugins → Plugins → enter this folder/package 
 Accept permissions and install. Add URL automatically inspects matching links. Choose
 video, audio, subtitle tracks and the output container before starting.
 Playlist entries can be selected before they enter the queue. The Audio only option
-shows extraction formats. Subtitles are saved as sidecar files. Choose Node or Deno in plugin settings
-when yt-dlp needs an installed JavaScript runtime.
+shows extraction formats. Subtitles are saved as sidecar files. The default runtime setting uses Deno, or Node when Deno is absent;
+pick one explicitly in plugin settings when yt-dlp needs a specific runtime.
 
 Cookies are optional and disabled by default. To enable them, set `use_cookies`
 to true and supply browser cookies using Hydra's existing cookie controls.

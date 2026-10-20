@@ -44,7 +44,15 @@ VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 
 # A pre-release ships without official plugins, and the bundle this would
 # download is only published with the stable release.
-if [ "${HYDRA_SKIP_OFFICIAL_PLUGINS:-}" != 1 ]; then
+if [ "${HYDRA_SKIP_OFFICIAL_PLUGINS:-}" = 1 ]; then
+  :
+elif [ -n "${HYDRA_OFFICIAL_PLUGIN_DIR:-}" ]; then
+  # A preset bundle (local plugin builds, unreleased versions) is used as-is;
+  # build.rs resolves it from the crate directory, so it must be absolute.
+  HYDRA_OFFICIAL_PLUGIN_DIR=$(cd "$HYDRA_OFFICIAL_PLUGIN_DIR" && pwd) \
+    || { echo "HYDRA_OFFICIAL_PLUGIN_DIR is not a directory" >&2; exit 1; }
+  export HYDRA_OFFICIAL_PLUGIN_DIR
+else
   python3 scripts/plugins/stage-official.py --version "$VERSION"
   export HYDRA_OFFICIAL_PLUGIN_DIR="$(pwd)/plugins/bundled"
 fi
