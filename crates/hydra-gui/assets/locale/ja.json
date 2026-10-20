@@ -627,5 +627,6 @@
   "Customize toolbar": "ツールバーをカスタマイズ",
   "First": "先頭",
   "Last": "末尾",
-  "Toolbar buttons shown: {shown} of {max}": "表示中のツールバーボタン: {shown} / {max}"
+  "Toolbar buttons shown: {shown} of {max}": "表示中のツールバーボタン: {shown} / {max}",
+  "Choose a folder": "Choose a folder"
 }

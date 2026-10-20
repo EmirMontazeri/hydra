@@ -627,5 +627,6 @@
   "Customize toolbar": "Dostosuj pasek narzędzi",
   "First": "Pierwszy",
   "Last": "Ostatni",
-  "Toolbar buttons shown: {shown} of {max}": "Wyświetlane przyciski paska: {shown} z {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Wyświetlane przyciski paska: {shown} z {max}",
+  "Choose a folder": "Choose a folder"
 }

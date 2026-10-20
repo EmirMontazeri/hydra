@@ -627,5 +627,6 @@
   "Customize toolbar": "도구 모음 사용자 지정",
   "First": "맨 앞",
   "Last": "맨 뒤",
-  "Toolbar buttons shown: {shown} of {max}": "표시된 도구 모음 버튼: {shown} / {max}"
+  "Toolbar buttons shown: {shown} of {max}": "표시된 도구 모음 버튼: {shown} / {max}",
+  "Choose a folder": "Choose a folder"
 }

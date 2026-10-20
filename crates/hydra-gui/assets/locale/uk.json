@@ -627,5 +627,6 @@
   "Customize toolbar": "Налаштувати панель інструментів",
   "First": "Першою",
   "Last": "Останньою",
-  "Toolbar buttons shown: {shown} of {max}": "Показано кнопок панелі: {shown} з {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Показано кнопок панелі: {shown} з {max}",
+  "Choose a folder": "Choose a folder"
 }

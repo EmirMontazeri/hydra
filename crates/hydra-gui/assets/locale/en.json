@@ -627,5 +627,6 @@
   "Customize toolbar": "Customize toolbar",
   "First": "First",
   "Last": "Last",
-  "Toolbar buttons shown: {shown} of {max}": "Toolbar buttons shown: {shown} of {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Toolbar buttons shown: {shown} of {max}",
+  "Choose a folder": "Choose a folder"
 }

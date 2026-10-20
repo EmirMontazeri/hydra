@@ -627,5 +627,6 @@
   "Customize toolbar": "Eszköztár testreszabása",
   "First": "Első",
   "Last": "Utolsó",
-  "Toolbar buttons shown: {shown} of {max}": "Megjelenített eszköztárgombok: {shown} / {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Megjelenített eszköztárgombok: {shown} / {max}",
+  "Choose a folder": "Choose a folder"
 }

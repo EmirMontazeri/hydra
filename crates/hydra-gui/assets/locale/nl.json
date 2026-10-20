@@ -627,5 +627,6 @@
   "Customize toolbar": "Werkbalk aanpassen",
   "First": "Eerste",
   "Last": "Laatste",
-  "Toolbar buttons shown: {shown} of {max}": "Zichtbare werkbalkknoppen: {shown} van {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Zichtbare werkbalkknoppen: {shown} van {max}",
+  "Choose a folder": "Choose a folder"
 }

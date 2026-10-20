@@ -1966,6 +1966,8 @@ pub struct StateFile {
     pub next_id: DlId,
     pub downloads: Vec<DownloadItem>,
     pub dl_quota: DlQuota,
+    /// Folders chosen in the Save As box, most recent first.
+    pub recent_dirs: Vec<String>,
 }
 
 impl Default for StateFile {
@@ -1974,8 +1976,24 @@ impl Default for StateFile {
             next_id: 1,
             downloads: vec![],
             dl_quota: DlQuota::default(),
+            recent_dirs: vec![],
         }
     }
+}
+
+pub const RECENT_DIRS_MAX: usize = 10;
+
+/// Put `dir` first, drop an earlier copy of it, and keep only the newest
+/// [`RECENT_DIRS_MAX`]. Returns whether the list changed.
+pub fn push_recent_dir(list: &mut Vec<String>, dir: &str) -> bool {
+    let dir = dir.trim();
+    if dir.is_empty() || list.first().is_some_and(|d| d == dir) {
+        return false;
+    }
+    list.retain(|d| d != dir);
+    list.insert(0, dir.to_string());
+    list.truncate(RECENT_DIRS_MAX);
+    true
 }
 
 pub fn load_config() -> ConfigFile {
@@ -2251,6 +2269,7 @@ const DOWNLOADS: redb::TableDefinition<u64, &[u8]> = redb::TableDefinition::new(
 /// and out of the downloads table so saving it does not rewrite every row.
 const META: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("meta");
 const QUOTA_KEY: &str = "dl_quota";
+const RECENT_DIRS_KEY: &str = "recent_dirs";
 
 fn state_db() -> Option<&'static redb::Database> {
     use std::sync::OnceLock;
@@ -2331,6 +2350,11 @@ pub fn load_state() -> StateFile {
                         st.dl_quota = q;
                     }
                 }
+                if let Ok(Some(row)) = table.get(RECENT_DIRS_KEY) {
+                    if let Ok(dirs) = serde_json::from_slice::<Vec<String>>(row.value()) {
+                        st.recent_dirs = dirs;
+                    }
+                }
             }
         }
     }
@@ -2380,8 +2404,47 @@ pub fn save_quota(q: &DlQuota) {
     }
 }
 
+pub fn save_recent_dirs(dirs: &[String]) {
+    let Some(db) = state_db() else { return };
+    let Ok(txn) = db.begin_write() else { return };
+    {
+        if let (Ok(mut table), Ok(bytes)) = (txn.open_table(META), serde_json::to_vec(dirs)) {
+            let _ = table.insert(RECENT_DIRS_KEY, bytes.as_slice());
+        }
+    }
+    if let Err(e) = txn.commit() {
+        crate::log::error(&format!("recent folders save failed: {e}"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn recent_dir_goes_first_and_is_not_repeated() {
+        let mut l = vec!["/a".to_string(), "/b".to_string(), "/c".to_string()];
+        assert!(push_recent_dir(&mut l, "/c"));
+        assert_eq!(l, ["/c", "/a", "/b"]);
+    }
+
+    #[test]
+    fn recent_dir_already_first_is_a_no_op() {
+        let mut l = vec!["/a".to_string(), "/b".to_string()];
+        assert!(!push_recent_dir(&mut l, "/a"));
+        assert!(!push_recent_dir(&mut l, "  "));
+        assert_eq!(l, ["/a", "/b"]);
+    }
+
+    #[test]
+    fn recent_dirs_evict_the_oldest_past_ten() {
+        let mut l: Vec<String> = (0..RECENT_DIRS_MAX).map(|i| format!("/d{i}")).collect();
+        l.reverse();
+        assert!(push_recent_dir(&mut l, "/new"));
+        assert_eq!(l.len(), RECENT_DIRS_MAX);
+        assert_eq!(l[0], "/new");
+        assert!(!l.contains(&"/d0".to_string()));
+    }
+
     #[test]
     fn atomic_write_replaces_whole_file_and_leaves_no_temp() {
         let dir = std::env::temp_dir().join(format!("hya-cfg-{}-a", std::process::id()));

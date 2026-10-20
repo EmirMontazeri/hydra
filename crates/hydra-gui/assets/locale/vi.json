@@ -627,5 +627,6 @@
   "Customize toolbar": "Tùy chỉnh thanh công cụ",
   "First": "Đầu",
   "Last": "Cuối",
-  "Toolbar buttons shown: {shown} of {max}": "Nút thanh công cụ đang hiện: {shown}/{max}"
+  "Toolbar buttons shown: {shown} of {max}": "Nút thanh công cụ đang hiện: {shown}/{max}",
+  "Choose a folder": "Choose a folder"
 }

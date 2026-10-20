@@ -627,5 +627,6 @@
   "Customize toolbar": "Personalizar la barra de herramientas",
   "First": "Primero",
   "Last": "Último",
-  "Toolbar buttons shown: {shown} of {max}": "Botones de la barra mostrados: {shown} de {max}"
+  "Toolbar buttons shown: {shown} of {max}": "Botones de la barra mostrados: {shown} de {max}",
+  "Choose a folder": "Choose a folder"
 }

@@ -627,5 +627,6 @@
   "Customize toolbar": "تخصيص شريط الأدوات",
   "First": "الأول",
   "Last": "الأخير",
-  "Toolbar buttons shown: {shown} of {max}": "أزرار شريط الأدوات المعروضة: {shown} من {max}"
+  "Toolbar buttons shown: {shown} of {max}": "أزرار شريط الأدوات المعروضة: {shown} من {max}",
+  "Choose a folder": "Choose a folder"
 }

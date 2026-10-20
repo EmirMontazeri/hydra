@@ -627,5 +627,6 @@
   "Customize toolbar": "自訂工具列",
   "First": "最前",
   "Last": "最後",
-  "Toolbar buttons shown: {shown} of {max}": "顯示的工具列按鈕：{shown} / {max}"
+  "Toolbar buttons shown: {shown} of {max}": "顯示的工具列按鈕：{shown} / {max}",
+  "Choose a folder": "Choose a folder"
 }
