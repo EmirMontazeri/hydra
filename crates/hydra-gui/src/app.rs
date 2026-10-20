@@ -441,6 +441,8 @@ pub struct CaptureExtras {
     /// Page the browser was on when it captured this file. A CDN with
     /// hotlink protection answers `403` without it.
     pub referer: Option<String>,
+    /// The browser's own `User-Agent`, replayed on the transfer.
+    pub user_agent: Option<String>,
     /// The proxy the browser itself is using, as a full specification.
     pub proxy: Option<String>,
 }
@@ -455,6 +457,7 @@ impl CaptureExtras {
             cookie_source: take(&mut self.cookie_source),
             name: take(&mut self.name),
             referer: take(&mut self.referer),
+            user_agent: take(&mut self.user_agent),
             proxy: take(&mut self.proxy),
         }
     }
@@ -3389,7 +3392,10 @@ impl App {
             }
             return Task::none();
         }
-        let user_agent = self.cfg.settings.user_agent.clone();
+        let user_agent = self
+            .item(id)
+            .and_then(|d| d.user_agent.clone())
+            .unwrap_or_else(|| self.cfg.settings.user_agent.clone());
         let adaptive = self.cfg.settings.adaptive_conns;
         // Read here with the others: the item is borrowed mutably below.
         let remote_time = self.cfg.settings.server_file_date;
@@ -3726,6 +3732,7 @@ impl App {
             cookies: None,
             cookie_source: None,
             referer: None,
+            user_agent: None,
             speed_limit: None,
             speed_limit_value: None,
             remember_speed_limit: None,
@@ -4168,6 +4175,7 @@ impl App {
                         cookie_source: None,
                         name: dl.filename,
                         referer: dl.referer,
+                        user_agent: dl.user_agent,
                         proxy: dl.proxy,
                     },
                     ..AddUrlState::default()
@@ -6753,7 +6761,10 @@ impl App {
                 let referer = self.item(dl).and_then(|d| d.referer.clone());
                 let headers = engine::request_headers(auth, Some(&fi.cookies), referer.as_deref());
                 let url = fi.url.clone();
-                let ua = self.cfg.settings.user_agent.clone();
+                let ua = self
+                    .item(dl)
+                    .and_then(|d| d.user_agent.clone())
+                    .unwrap_or_else(|| self.cfg.settings.user_agent.clone());
                 // The size the probe (or the transfer running behind the
                 // dialog) already found saves the peek two round trips.
                 let size = self.item(dl).and_then(|d| d.size);
@@ -8098,7 +8109,10 @@ impl App {
         if self.item(id).is_some_and(|item| item.plugin_plan.is_some()) {
             return Task::none();
         }
-        let ua = self.cfg.settings.user_agent.clone();
+        let ua = self
+            .item(id)
+            .and_then(|d| d.user_agent.clone())
+            .unwrap_or_else(|| self.cfg.settings.user_agent.clone());
         // The item's own route, not the app's: a capture that arrived with
         // the browser's proxy is reachable through that proxy and nowhere
         // else, and a probe that leaves by a different door reports a file
@@ -8221,6 +8235,7 @@ impl App {
                 cookie_source: None,
                 name: None,
                 referer: dl.referer.or(dl.tab_url),
+                user_agent: dl.user_agent,
                 proxy: dl.proxy,
             },
             ..AddUrlState::default()
@@ -9049,6 +9064,9 @@ fn write_capture_extras(
             d.description = r.clone();
         }
         d.referer = Some(r);
+    }
+    if let Some(ua) = extras.user_agent {
+        d.user_agent = Some(ua);
     }
     if let Some(p) = captured_proxy(extras.proxy) {
         d.proxy = p;
@@ -11059,6 +11077,7 @@ mod tests {
             cookies: None,
             cookie_source: None,
             referer: None,
+            user_agent: None,
             speed_limit: None,
             speed_limit_value: None,
             remember_speed_limit: None,
@@ -11573,6 +11592,7 @@ mod tests {
             cookie_source: None,
             name: Some(String::new()),
             referer: None,
+            user_agent: None,
             proxy: Some(String::new()),
         };
         let taken = extras.taken();
@@ -11690,12 +11710,14 @@ mod tests {
                 cookie_source: None,
                 name: Some("Setup.exe".into()),
                 referer: Some("https://page.example/".into()),
+                user_agent: Some("Mozilla/5.0 Browser".into()),
                 proxy: Some("socks5://127.0.0.1:10808".into()),
             },
             Some((Some("Programs".into()), Some("/downloads/programs".into()))),
         );
         assert_eq!(d.cookies.as_deref(), Some("sid=abc"));
         assert_eq!(d.referer.as_deref(), Some("https://page.example/"));
+        assert_eq!(d.user_agent.as_deref(), Some("Mozilla/5.0 Browser"));
         assert_eq!(d.file_name, "Setup.exe");
         assert_eq!(d.category.as_deref(), Some("Programs"));
         assert_eq!(d.save_dir, "/downloads/programs");
