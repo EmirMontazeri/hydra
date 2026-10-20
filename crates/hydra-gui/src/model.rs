@@ -83,6 +83,11 @@ pub struct DownloadItem {
     /// manifest's segments.
     #[serde(default)]
     pub referer: Option<String>,
+    /// The browser's `User-Agent` when the extension captured this file. Some
+    /// origins (cloud.mail.ru) sign the redirect target to the client that
+    /// asked for it and answer `403` to any other agent.
+    #[serde(default)]
+    pub user_agent: Option<String>,
     /// Per-download cap, bytes/sec, when the Speed Limiter tab enables one.
     pub speed_limit: Option<u64>,
     /// Last chosen cap, bytes/sec, retained while the limiter is disabled.
@@ -3563,6 +3568,7 @@ mod tests {
             cookies: None,
             cookie_source: None,
             referer: None,
+            user_agent: None,
             speed_limit: None,
             speed_limit_value: None,
             remember_speed_limit: None,

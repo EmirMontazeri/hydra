@@ -361,6 +361,7 @@ fn download(i: u64) -> DownloadItem {
         cookies: None,
         cookie_source: None,
         referer: None,
+        user_agent: None,
         speed_limit: None,
         speed_limit_value: None,
         remember_speed_limit: None,
