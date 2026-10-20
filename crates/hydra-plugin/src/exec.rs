@@ -30,6 +30,14 @@ const KEPT_ENV: &[&str] = &[
     "LC_ALL",
     "LC_CTYPE",
     "SYSTEMROOT",
+    // Windows tools need these to find runtimes (`node` → `node.exe`) and profiles.
+    "PATHEXT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "COMSPEC",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
 ];
 
 /// A resolved program as it was when the user approved it.
@@ -544,6 +552,19 @@ mod tests {
             assert!(body.contains("out"));
             assert!(body.contains("s= "), "{body}");
             assert_eq!(out.stderr.trim(), "err");
+        }
+
+        #[test]
+        fn windows_runtime_lookup_variables_reach_the_child() {
+            let dir = tmp("pathext");
+            script(&dir, "t", "printf '%s|%s' \"$PATHEXT\" \"$USERPROFILE\"");
+            let pinned = pin("t", std::slice::from_ref(&dir)).unwrap();
+            std::env::set_var("PATHEXT", ".COM;.EXE");
+            std::env::set_var("USERPROFILE", "/home/hydra");
+            let output = run(&pinned, &[], &dir, &ctl(10), &[]).unwrap();
+            let body =
+                String::from_utf8(hya_net::base64::decode(&output.stdout_b64).unwrap()).unwrap();
+            assert_eq!(body, ".COM;.EXE|/home/hydra");
         }
 
         #[test]

@@ -18,7 +18,7 @@
       "author": "Hydra Team",
       "image": "plugins/img/hydra.youtube/icon.svg",
       "sha256": "b124facc42755d30bb1be9f4513e9db5f846d82943b59289ef745e61b3f1bb7c",
-      "publisher_key": "RWTaGOCLthz+jwx/MfJUHw9YUABimWtJvF0ZwDVlRgfspb7sD7iy+x8x",
+      "publisher_key": "RWSwIe2H4e7AjH/lNx8Hs8H5tMbZJIiRTYYt2+i/ZZzuyF4+mdS7t2Pr",
       "api": 1
     },
     {
@@ -68,7 +68,7 @@
       "homepage": "https://github.com/ja7ad/hydra/tree/main/plugins/hydra-torrent",
       "author": "Hydra Team",
       "image": "plugins/img/hydra.torrent/icon.svg",
-      "publisher_key": "RWTaGOCLthz+jwx/MfJUHw9YUABimWtJvF0ZwDVlRgfspb7sD7iy+x8x",
+      "publisher_key": "RWSwIe2H4e7AjH/lNx8Hs8H5tMbZJIiRTYYt2+i/ZZzuyF4+mdS7t2Pr",
       "api": 1,
       "min_hydra": "1.0.7"
     }
