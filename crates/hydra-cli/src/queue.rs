@@ -258,10 +258,14 @@ impl Queue {
         }
     }
 
-    /// Remove terminal items, returning how many were dropped.
+    /// Remove items that will not run again, returning how many were dropped.
+    ///
+    /// Failed items count: their retries are spent, and they are the ones a user
+    /// most wants out of the list.
     pub fn clear_finished(&mut self) -> usize {
         let before = self.items.len();
-        self.items.retain(|i| !i.state.is_terminal());
+        self.items
+            .retain(|i| !(i.state.is_terminal() || i.state == State::Failed));
         before - self.items.len()
     }
 
@@ -620,10 +624,20 @@ mod tests {
         assert_eq!(
             q.clear_finished(),
             2,
-            "done and cancelled go; failed and queued stay"
+            "done and cancelled go; a failure still awaiting retry stays"
         );
         assert_eq!(q.items.len(), 1);
         assert_eq!(q.items[0].id, 3);
+    }
+
+    #[test]
+    fn clear_finished_removes_items_that_exhausted_their_retries() {
+        let mut q = q3();
+        q.max_attempts = 1;
+        q.mark_running(1);
+        assert_eq!(q.fail(1, "404".into()), State::Failed);
+        assert_eq!(q.clear_finished(), 1);
+        assert!(q.items.iter().all(|i| i.id != 1));
     }
 
     #[test]
