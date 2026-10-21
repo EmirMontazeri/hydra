@@ -383,6 +383,28 @@ impl Ui {
         }
     }
 
+    /// Items to draw so the list never exceeds `budget` screen lines and the
+    /// selection stays on screen. A failed item spends a second line on its error.
+    fn visible_window(&self, q: &Queue, budget: usize) -> std::ops::Range<usize> {
+        let lines = |i: usize| 1 + usize::from(q.items[i].error.is_some());
+        if q.items.is_empty() {
+            return 0..0;
+        }
+        let selected = self.selected.min(q.items.len() - 1);
+        let mut start = 0;
+        let mut used: usize = (0..=selected).map(lines).sum();
+        while used > budget && start < selected {
+            used -= lines(start);
+            start += 1;
+        }
+        let mut end = selected + 1;
+        while end < q.items.len() && used + lines(end) <= budget {
+            used += lines(end);
+            end += 1;
+        }
+        start..end
+    }
+
     pub fn note_rate(&mut self, rate: f64) {
         self.history.push(rate);
         if self.history.len() > 64 {
@@ -560,20 +582,21 @@ impl Ui {
         }
 
         // ---- list ----
-        let list_rows = (rows as usize).saturating_sub(8).max(3);
+        let list_rows = (rows as usize).saturating_sub(10).max(3);
         if q.items.is_empty() {
             let _ = writeln!(
                 s,
                 "\r\n  \x1b[90mthe queue is empty — press 'a' to add a URL\x1b[0m\r"
             );
         }
-        let first = first_visible(q, self.selected, list_rows);
-        let mut used = 0usize;
-        for (idx, it) in q.items.iter().enumerate().skip(first) {
-            used += item_rows(it);
-            if used > list_rows && idx > first {
-                break;
-            }
+        let window = self.visible_window(q, list_rows);
+        for (idx, it) in q
+            .items
+            .iter()
+            .enumerate()
+            .take(window.end)
+            .skip(window.start)
+        {
             let sel = idx == self.selected;
             let marker = if sel { "\x1b[7m▸" } else { " " };
             let (tag, colour) = match it.state {
@@ -638,27 +661,6 @@ impl Ui {
         }
         s
     }
-}
-
-fn item_rows(it: &crate::queue::Item) -> usize {
-    1 + usize::from(it.error.is_some())
-}
-
-/// Index of the first item to draw so the selected one is on screen: the
-/// window scrolls only once the selection passes the bottom edge.
-fn first_visible(q: &Queue, selected: usize, list_rows: usize) -> usize {
-    let selected = selected.min(q.items.len().saturating_sub(1));
-    let mut first = selected;
-    let mut used = q.items.get(selected).map_or(0, item_rows);
-    while first > 0 {
-        let above = item_rows(&q.items[first - 1]);
-        if used + above > list_rows {
-            break;
-        }
-        used += above;
-        first -= 1;
-    }
-    first
 }
 
 fn trunc(s: &str, n: usize) -> String {
@@ -1780,6 +1782,41 @@ mod tests {
         let out = ui.render(&q, 100, 14);
         assert!(out.contains("file09.bin"));
         assert!(out.matches("boom").count() <= 3);
+    }
+
+    #[test]
+    fn list_stays_within_the_screen_when_failed_items_take_two_lines() {
+        let mut q = Queue::new(1);
+        for n in 0..30 {
+            let id = q.add(
+                vec![format!("http://x/{n}.bin")],
+                format!("f{n}.bin").into(),
+            );
+            q.mark_running(id);
+            q.fail(id, "404 not found".into());
+        }
+        let ui = Ui::new();
+        let out = ui.render(&q, 140, 24);
+        assert!(
+            out.matches("\r\n").count() < 24,
+            "frame taller than the terminal scrolls the header off and leaves stale rows"
+        );
+    }
+
+    #[test]
+    fn selection_scrolls_into_view_past_the_last_visible_row() {
+        let mut q = Queue::new(1);
+        for n in 0..30 {
+            q.add(
+                vec![format!("http://x/{n}.bin")],
+                format!("f{n}.bin").into(),
+            );
+        }
+        let mut ui = Ui::new();
+        ui.selected = 29;
+        let out = ui.render(&q, 100, 24);
+        assert!(out.contains("f29.bin"), "selected item must be drawn");
+        assert!(!out.contains("f0.bin"), "window must have scrolled");
     }
 
     #[test]
