@@ -116,8 +116,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 # Ad-hoc signature: unsigned binaries get silently denied by TCC instead of
-# prompting for Downloads-folder access.
-codesign --force --deep -s - "$APP"
+# prompting for Downloads-folder access. The explicit designated requirement
+# keeps the identity stable across builds; a bare ad-hoc one is the cdhash,
+# which changes every build and orphans the user's Full Disk Access grant.
+codesign --force --deep -s - -r='designated => identifier "io.github.ja7ad.hydra"' "$APP"
 echo "Built: $APP"
 
 INSTALLED="/Applications/Hydra Download Manager.app"
