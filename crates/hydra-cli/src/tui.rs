@@ -567,7 +567,13 @@ impl Ui {
                 "\r\n  \x1b[90mthe queue is empty — press 'a' to add a URL\x1b[0m\r"
             );
         }
-        for (idx, it) in q.items.iter().take(list_rows).enumerate() {
+        let first = first_visible(q, self.selected, list_rows);
+        let mut used = 0usize;
+        for (idx, it) in q.items.iter().enumerate().skip(first) {
+            used += item_rows(it);
+            if used > list_rows && idx > first {
+                break;
+            }
             let sel = idx == self.selected;
             let marker = if sel { "\x1b[7m▸" } else { " " };
             let (tag, colour) = match it.state {
@@ -632,6 +638,27 @@ impl Ui {
         }
         s
     }
+}
+
+fn item_rows(it: &crate::queue::Item) -> usize {
+    1 + usize::from(it.error.is_some())
+}
+
+/// Index of the first item to draw so the selected one is on screen: the
+/// window scrolls only once the selection passes the bottom edge.
+fn first_visible(q: &Queue, selected: usize, list_rows: usize) -> usize {
+    let selected = selected.min(q.items.len().saturating_sub(1));
+    let mut first = selected;
+    let mut used = q.items.get(selected).map_or(0, item_rows);
+    while first > 0 {
+        let above = item_rows(&q.items[first - 1]);
+        if used + above > list_rows {
+            break;
+        }
+        used += above;
+        first -= 1;
+    }
+    first
 }
 
 fn trunc(s: &str, n: usize) -> String {
@@ -1689,6 +1716,70 @@ mod tests {
             "the error must be visible, not hidden"
         );
         assert!(out.contains("run "), "state tag missing");
+    }
+
+    fn long_queue(n: usize) -> Queue {
+        let mut q = Queue::new(1);
+        for i in 0..n {
+            q.add(
+                vec![format!("http://h/file{i:02}.bin")],
+                PathBuf::from(format!("file{i:02}.bin")),
+            );
+        }
+        q
+    }
+
+    #[test]
+    fn selection_past_the_visible_rows_scrolls_the_list() {
+        let q = long_queue(30);
+        let mut ui = Ui::new();
+        let rows = 20u16;
+        for _ in 0..29 {
+            ui.on_key(key('j'), &q);
+        }
+        let out = ui.render(&q, 100, rows);
+        assert!(
+            out.contains("file29.bin"),
+            "the selected last item must be drawn"
+        );
+        assert!(!out.contains("file00.bin"), "the window must have scrolled");
+    }
+
+    #[test]
+    fn list_does_not_scroll_until_selection_leaves_the_window() {
+        let q = long_queue(30);
+        let mut ui = Ui::new();
+        for _ in 0..5 {
+            ui.on_key(key('j'), &q);
+        }
+        let out = ui.render(&q, 100, 20);
+        assert!(out.contains("file00.bin"));
+        assert!(out.contains("file05.bin"));
+    }
+
+    #[test]
+    fn scrolling_back_up_brings_earlier_items_into_view() {
+        let q = long_queue(30);
+        let mut ui = Ui::new();
+        ui.selected = 29;
+        for _ in 0..29 {
+            ui.on_key(key('k'), &q);
+        }
+        assert!(ui.render(&q, 100, 20).contains("file00.bin"));
+    }
+
+    #[test]
+    fn error_lines_count_against_the_window() {
+        let mut q = long_queue(10);
+        for id in 1..=10 {
+            q.mark_running(id);
+            q.fail(id, "boom".into());
+        }
+        let mut ui = Ui::new();
+        ui.selected = 9;
+        let out = ui.render(&q, 100, 14);
+        assert!(out.contains("file09.bin"));
+        assert!(out.matches("boom").count() <= 3);
     }
 
     #[test]
