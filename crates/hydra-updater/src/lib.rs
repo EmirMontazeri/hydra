@@ -1290,13 +1290,18 @@ pub fn set_bundle_version(bundle: &Path, version: &str) -> io::Result<bool> {
     Ok(true)
 }
 
+/// Pins the bundle's TCC identity to its identifier. A bare ad-hoc signature
+/// designates the cdhash, which every update changes, so macOS keeps listing
+/// the app under Full Disk Access while refusing the new binary.
+const DESIGNATED_REQUIREMENT: &str = "-r=designated => identifier \"io.github.ja7ad.hydra\"";
+
 /// Ad-hoc re-sign a bundle. `Ok(false)` when the platform has no codesign.
 fn resign_bundle(bundle: &Path) -> io::Result<bool> {
     if !cfg!(target_os = "macos") || !Path::new("/usr/bin/codesign").exists() {
         return Ok(false);
     }
     let out = std::process::Command::new("/usr/bin/codesign")
-        .args(["--force", "--deep", "--sign", "-"])
+        .args(["--force", "--deep", "--sign", "-", DESIGNATED_REQUIREMENT])
         .arg(bundle)
         .output()?;
     if out.status.success() {
@@ -2250,6 +2255,36 @@ mod tests {
             0o111
         );
         assert_eq!(std::fs::read_dir(&bin).unwrap().count(), 3);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn resigned_bundles_of_different_versions_share_one_designated_requirement() {
+        let tmp = std::env::temp_dir().join(format!("hydra-designated-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let requirement = |version: &str| {
+            let dir = tmp.join(version);
+            let bundle = fake_bundle(&dir, "Hydra Download Manager", version);
+            std::fs::copy(
+                "/usr/bin/true",
+                bundle_bin_dir(&bundle).join("Hydra Download Manager"),
+            )
+            .unwrap();
+            assert!(resign_bundle(&bundle).unwrap());
+            let out = std::process::Command::new("/usr/bin/codesign")
+                .args(["-d", "-r-"])
+                .arg(&bundle)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .find_map(|l| l.strip_prefix("designated => ").map(str::to_owned))
+                .expect("a designated requirement")
+        };
+        let old = requirement("0.9.0");
+        assert_eq!(old, requirement("1.0.0"));
+        assert_eq!(old, "identifier \"io.github.ja7ad.hydra\"");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
